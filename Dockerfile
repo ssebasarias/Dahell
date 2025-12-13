@@ -1,0 +1,38 @@
+## Dockerfile para el pipeline completo de Dropi
+# 1) Construye un contenedor ligero basado en Python slim
+# 2) Instala dependencias del proyecto (pip + apt)
+# 3) Configura Chromium para Selenium
+# 4) Copia el código y define un comando por defecto
+
+# --- Etapa base de Python ---
+    FROM python:3.11-slim AS base
+
+    # Evitar buffers en logs
+    ENV PYTHONUNBUFFERED=1
+    
+    # Directorio de trabajo dentro del contenedor
+    WORKDIR /app
+    
+    # Copia e instala dependencias Python
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    
+    # --- Instalación de Chromium y WebDriver ---
+    FROM base AS selenium
+    
+    # Instalar Chromium y chromedriver para Selenium
+    RUN apt-get update \
+        && apt-get install -y --no-install-recommends \
+           chromium chromium-driver \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Variables de entorno para Selenium
+    ENV CHROME_BIN=/usr/bin/chromium \
+        CHROMEDRIVER=/usr/bin/chromedriver
+    
+    # Copiar todo el código del proyecto
+    COPY . .
+    
+    # Definir comando por defecto: ejecuta el scraper
+    CMD ["python", "scripts/scraper.py"]
+    

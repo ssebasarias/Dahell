@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+scraper:
+build:
+context: .
+target: selenium
+container_name: dropi_scraper
+volumes:
+- raw_data:/app/raw_data
+- output:/app/output
+- db:/app/db          # opcional: compartir DB con loader si el scraper también la necesita
+env_file:
+- .env               # carga DROPI_EMAIL, DROPI_PASSWORD, HEADLESS
+environment:
+# Variables para el scraper
+- RAW_JSONL=/app/raw_data/raw_products.jsonl
+- CATALOG_CSV=/app/output/catalogo_dropi.csv
+restart: on-failure
+
+loader:
+build:
+context: .
+target: base
+container_name: dropi_loader
+depends_on:
+- scraper
+volumes:
+- raw_data:/app/raw_data
+- db:/app/db
+env_file:
+- .env               # carga DUCKDB_PATH si se define aquí
+command: ["python", "scripts/loader.py", "--input", "/app/raw_data/raw_products.jsonl", "--db", "/app/db/dropi.db"]
+restart: on-failure
+
+volumes:
+raw_data:
+output:
+db:
