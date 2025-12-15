@@ -124,6 +124,7 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./logs:/app/logs
+      - ./cache_huggingface:/app/cache_huggingface
     ports:
       - "8000:8000"
     command: python backend/manage.py runserver 0.0.0.0:8000

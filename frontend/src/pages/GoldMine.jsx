@@ -264,7 +264,13 @@ const GoldMine = () => {
                     </table>
                 </div>
 
-                {loading && <div style={{ textAlign: 'center', padding: '2rem' }}>Cargando datos...</div>}
+                {loading && (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#ccc' }}>
+                        {isVisualMode
+                            ? "Analizando imagen... (la primera vez puede tardar unos segundos mientras se carga la IA)"
+                            : "Cargando datos..."}
+                    </div>
+                )}
 
                 {!loading && opportunities.length === 0 && (
                     <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
