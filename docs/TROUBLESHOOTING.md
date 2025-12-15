@@ -407,6 +407,52 @@ ports:
 
 ---
 
+### ❌ Error: "Docker Build muy lento o congelado"
+
+**Síntoma:**
+```
+[+] Building 135.7s (12/17)
+ => [loader] exporting to image                    110.3s
+```
+El build tarda minutos o parece detenerse en "exporting to image" o "sending build context".
+
+**Causa:**
+- Docker está intentando copiar carpetas gigantes que no necesita (ej: `backups/`, `tmp/`, `pg_data/`).
+
+**Solución:**
+Asegurarse de que `.dockerignore` incluya estas carpetas:
+```text
+.git
+backups
+tmp
+pg_data
+dahell_db_data
+ram_data/*.jsonl
+```
+
+---
+
+### ❌ Error: "La base de datos está vacía (Tablas no encontradas)"
+
+**Síntoma:**
+Al entrar a pgAdmin o conectar el backend, dice que las tablas no existen, a pesar de usar `dahell_db.sql`.
+
+**Causa:**
+- El volumen en `docker-compose.yml` apuntaba a un archivo inexistente o ubicación incorrecta.
+
+**Solución:**
+Verificar que la ruta en `docker-compose.yml` sea correcta (ej: `./backend/dahell_db.sql`):
+```yaml
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # Ruta CORRECTA al archivo SQL
+      - ./backend/dahell_db.sql:/docker-entrypoint-initdb.d/init.sql
+```
+*Nota: PostgreSQL solo ejecuta este script si la carpeta `pg_data` está vacía (primera vez). Si ya existe, hay que borrar el volumen.*
+
+
+---
+
 ## 🔄 ERRORES DEL PIPELINE ETL
 
 ### ❌ Scraper: "selenium.common.exceptions.WebDriverException"

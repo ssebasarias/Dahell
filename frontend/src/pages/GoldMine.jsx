@@ -20,69 +20,71 @@ const GoldMine = () => {
     const [isVisualMode, setIsVisualMode] = useState(false);
 
     // Paginación
-    const [offset, setOffset] = useState(0);
-    const LIMIT = 50;
-    const [hasMore, setHasMore] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalResults, setTotalResults] = useState(0);
+    const [competitorStats, setCompetitorStats] = useState({});
+    const ITEMS_PER_PAGE = 20;
 
     // Cargar Categorías al inicio
     useEffect(() => {
         fetchCategories().then(setCategories);
     }, []);
 
-    const loadData = useCallback(async (isNewSearch = false) => {
-        if (isVisualMode) return; // Visual search tiene su propio flow
+    const loadData = useCallback(async (page = 1) => {
+        if (isVisualMode) return;
 
         setLoading(true);
         try {
             const [min, max] = competitorRange.split('-').map(Number);
-            const currentOffset = isNewSearch ? 0 : offset;
+            const offset = (page - 1) * ITEMS_PER_PAGE;
 
             const params = {
                 q: search,
                 category: selectedCategory,
                 min_comp: min,
                 max_comp: max,
-                limit: LIMIT,
-                offset: currentOffset
+                limit: ITEMS_PER_PAGE,
+                offset: offset
             };
 
-            // Agregar filtros de precio si están definidos
             if (minPrice && Number(minPrice) > 0) params.min_price = minPrice;
             if (maxPrice && Number(maxPrice) > 0) params.max_price = maxPrice;
 
-            console.log('🔍 Gold Mine Params:', params);
-
             const newData = await fetchGoldMine(params);
 
-            if (isNewSearch) {
-                setOpportunities(newData);
-                setOffset(LIMIT);
-            } else {
-                setOpportunities(prev => [...prev, ...newData]);
-                setOffset(prev => prev + LIMIT);
-            }
+            setOpportunities(newData);
+            setCurrentPage(page);
 
-            if (newData.length < LIMIT) setHasMore(false);
-            else setHasMore(true);
+            // Calcular estadísticas de competidores
+            const stats = {};
+            newData.forEach(product => {
+                const comp = product.competitors || 0;
+                stats[comp] = (stats[comp] || 0) + 1;
+            });
+            setCompetitorStats(stats);
+
+            if (newData.length < ITEMS_PER_PAGE) {
+                setTotalResults(offset + newData.length);
+            } else {
+                setTotalResults((page + 10) * ITEMS_PER_PAGE);
+            }
 
         } catch (error) {
             console.error("Failed to load gold mine");
         } finally {
             setLoading(false);
         }
-    }, [search, competitorRange, selectedCategory, minPrice, maxPrice, offset, isVisualMode]);
+    }, [search, competitorRange, selectedCategory, minPrice, maxPrice, isVisualMode]);
 
-    // Disparar búsqueda al cambiar filtros (Debounce manual simple)
     useEffect(() => {
         if (!isVisualMode) {
             const timer = setTimeout(() => {
-                loadData(true);
+                loadData(1);
             }, 500);
             return () => clearTimeout(timer);
         }
     }, [search, competitorRange, selectedCategory, minPrice, maxPrice, isVisualMode]);
 
-    // Handle Visual Search
     const handleImageUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -90,18 +92,18 @@ const GoldMine = () => {
         setLoading(true);
         setIsVisualMode(true);
         setVisualImage(URL.createObjectURL(file));
-        setOpportunities([]); // Clear previous text results
+        setOpportunities([]);
 
         try {
             const results = await searchVisualGoldMine(file);
             setOpportunities(results);
-            setHasMore(false); // Visual search is usually one-shot top 50
+            setTotalResults(results.length);
         } catch (err) {
             console.error(err);
             alert("Error in visual search");
             setIsVisualMode(false);
             setVisualImage(null);
-            loadData(true);
+            loadData(1);
         } finally {
             setLoading(false);
         }
@@ -110,7 +112,35 @@ const GoldMine = () => {
     const clearVisualSearch = () => {
         setVisualImage(null);
         setIsVisualMode(false);
-        loadData(true); // Restore text search
+        loadData(1);
+    };
+
+    const totalPages = Math.ceil(totalResults / ITEMS_PER_PAGE);
+
+    const getPageNumbers = () => {
+        const pages = [];
+        const maxVisible = 7;
+
+        if (totalPages <= maxVisible) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            if (currentPage <= 4) {
+                for (let i = 1; i <= 5; i++) pages.push(i);
+                pages.push('...');
+                pages.push(totalPages);
+            } else if (currentPage >= totalPages - 3) {
+                pages.push(1);
+                pages.push('...');
+                for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+            } else {
+                pages.push(1);
+                pages.push('...');
+                for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
+                pages.push('...');
+                pages.push(totalPages);
+            }
+        }
+        return pages;
     };
 
     return (
@@ -120,18 +150,9 @@ const GoldMine = () => {
                 <p>Encuentra productos rentables. {isVisualMode ? "Modo: Búsqueda Visual por IA" : "Filtra, analiza y ataca."}</p>
             </div>
 
-            {/* Filter Bar */}
             <div className="glass-card" style={{ display: 'flex', gap: '1rem', padding: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-
-                {/* Visual Search Toggle */}
                 <div style={{ marginRight: '1rem' }}>
-                    <input
-                        type="file"
-                        id="visual-upload"
-                        style={{ display: 'none' }}
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                    />
+                    <input type="file" id="visual-upload" style={{ display: 'none' }} accept="image/*" onChange={handleImageUpload} />
                     {!isVisualMode ? (
                         <label htmlFor="visual-upload" className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                             <Camera size={18} />
@@ -145,69 +166,30 @@ const GoldMine = () => {
                     )}
                 </div>
 
-                {/* Text Search (Disabled in Visual Mode) */}
                 <div style={{ position: 'relative', flex: 1, opacity: isVisualMode ? 0.5 : 1 }}>
                     <Search size={18} style={{ position: 'absolute', left: 12, top: 10, color: '#94a3b8' }} />
-                    <input
-                        type="text"
-                        placeholder="Buscar producto por nombre..."
-                        value={search}
-                        disabled={isVisualMode}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="glass-select"
-                        style={{ width: '100%', paddingLeft: 40 }}
-                    />
+                    <input type="text" placeholder="Buscar producto por nombre..." value={search} disabled={isVisualMode} onChange={(e) => setSearch(e.target.value)} className="glass-select" style={{ width: '100%', paddingLeft: 40 }} />
                 </div>
 
-                {/* Filters (Disabled in Visual Mode) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto', opacity: isVisualMode ? 0.5 : 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto', opacity: isVisualMode ? 0.5 : 1, flexWrap: 'wrap' }}>
                     <Filter size={18} color="#94a3b8" />
 
-                    {/* Category Filter */}
-                    <select
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        disabled={isVisualMode}
-                        className="glass-select"
-                        style={{ maxWidth: 150 }}
-                    >
+                    <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} disabled={isVisualMode} className="glass-select" style={{ maxWidth: 150 }}>
                         <option value="all">Todas las Categorías</option>
                         {categories.map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                     </select>
 
-                    {/* Price Range Filter */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <span style={{ fontSize: '0.85rem', color: '#94a3b8', marginLeft: '0.5rem' }}>Precio:</span>
-                        <input
-                            type="number"
-                            placeholder="Min"
-                            value={minPrice}
-                            onChange={(e) => setMinPrice(e.target.value)}
-                            disabled={isVisualMode}
-                            className="glass-select"
-                            style={{ width: '90px', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
-                        />
+                        <input type="number" placeholder="Min" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} disabled={isVisualMode} className="glass-select" style={{ width: '90px', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }} />
                         <span style={{ color: '#64748b' }}>-</span>
-                        <input
-                            type="number"
-                            placeholder="Max"
-                            value={maxPrice}
-                            onChange={(e) => setMaxPrice(e.target.value)}
-                            disabled={isVisualMode}
-                            className="glass-select"
-                            style={{ width: '90px', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }}
-                        />
+                        <input type="number" placeholder="Max" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} disabled={isVisualMode} className="glass-select" style={{ width: '90px', padding: '0.4rem 0.5rem', fontSize: '0.85rem' }} />
                     </div>
 
                     <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginLeft: '0.5rem' }}>Comp:</span>
-                    <select
-                        value={competitorRange}
-                        onChange={(e) => setCompetitorRange(e.target.value)}
-                        disabled={isVisualMode}
-                        className="glass-select"
-                    >
+                    <select value={competitorRange} onChange={(e) => setCompetitorRange(e.target.value)} disabled={isVisualMode} className="glass-select">
                         <option value="0-1">Solo yo (0-1)</option>
                         <option value="0-3">Baja (0-3)</option>
                         <option value="0-5">Media (0-5)</option>
@@ -216,7 +198,6 @@ const GoldMine = () => {
                 </div>
             </div>
 
-            {/* Visual Preview Area */}
             {isVisualMode && visualImage && (
                 <div className="glass-card" style={{ marginBottom: '1rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(16, 185, 129, 0.1)' }}>
                     <div style={{ width: 60, height: 60, borderRadius: 8, overflow: 'hidden' }}>
@@ -229,7 +210,69 @@ const GoldMine = () => {
                 </div>
             )}
 
+            {/* Competitor Stats Panel */}
+            {!loading && !isVisualMode && Object.keys(competitorStats).length > 0 && (
+                <div className="glass-card" style={{ marginBottom: '1rem', padding: '1rem' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Users size={20} color="#667eea" />
+                        Distribución por Competidores
+                    </h3>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        {Object.entries(competitorStats)
+                            .sort((a, b) => Number(a[0]) - Number(b[0]))
+                            .map(([competitors, count]) => {
+                                const compNum = Number(competitors);
+                                let bgColor = 'rgba(16, 185, 129, 0.1)';
+                                let borderColor = 'rgba(16, 185, 129, 0.3)';
+                                let iconColor = '#10b981';
+
+                                if (compNum > 2 && compNum <= 5) {
+                                    bgColor = 'rgba(245, 158, 11, 0.1)';
+                                    borderColor = 'rgba(245, 158, 11, 0.3)';
+                                    iconColor = '#f59e0b';
+                                } else if (compNum > 5) {
+                                    bgColor = 'rgba(239, 68, 68, 0.1)';
+                                    borderColor = 'rgba(239, 68, 68, 0.3)';
+                                    iconColor = '#ef4444';
+                                }
+
+                                return (
+                                    <div
+                                        key={competitors}
+                                        style={{
+                                            background: bgColor,
+                                            border: `1px solid ${borderColor}`,
+                                            borderRadius: '8px',
+                                            padding: '0.75rem 1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.75rem',
+                                            minWidth: '120px'
+                                        }}
+                                    >
+                                        <Users size={24} color={iconColor} />
+                                        <div>
+                                            <div style={{ color: iconColor, fontSize: '1.25rem', fontWeight: 'bold' }}>
+                                                {compNum}
+                                            </div>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                                                {count} producto{count !== 1 ? 's' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                    </div>
+                </div>
+            )}
+
             <div className="glass-card">
+                {!loading && opportunities.length > 0 && (
+                    <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', fontSize: '0.9rem' }}>
+                        Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, totalResults)} de {totalResults}+ resultados
+                    </div>
+                )}
+
                 <div style={{ overflowX: 'auto' }}>
                     <table className="glass-table">
                         <thead>
@@ -268,9 +311,7 @@ const GoldMine = () => {
                                             <span className="badge badge-success">{op.profit_margin}</span>
                                         )}
                                     </td>
-                                    <td style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
-                                        {op.supplier}
-                                    </td>
+                                    <td style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>{op.supplier}</td>
                                     <td>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <UsersIcon count={op.competitors} />
@@ -278,19 +319,12 @@ const GoldMine = () => {
                                         </div>
                                     </td>
                                     <td>
-                                        <span style={{
-                                            color: op.saturation === 'ALTA' ? '#ef4444' : (op.saturation === 'MEDIA' ? '#f59e0b' : '#10b981'),
-                                            fontWeight: 500
-                                        }}>
+                                        <span style={{ color: op.saturation === 'ALTA' ? '#ef4444' : (op.saturation === 'MEDIA' ? '#f59e0b' : '#10b981'), fontWeight: 500 }}>
                                             {op.saturation || 'BAJA'}
                                         </span>
                                     </td>
                                     <td>
-                                        <button
-                                            className="btn-primary"
-                                            onClick={() => window.open(`https://app.dropi.co/products/${op.id}`, '_blank')}
-                                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }}
-                                        >
+                                        <button className="btn-primary" onClick={() => window.open(`https://app.dropi.co/products/${op.id}`, '_blank')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }}>
                                             Ver en Dropi
                                         </button>
                                     </td>
@@ -302,9 +336,7 @@ const GoldMine = () => {
 
                 {loading && (
                     <div style={{ textAlign: 'center', padding: '2rem', color: '#ccc' }}>
-                        {isVisualMode
-                            ? "Analizando imagen... (la primera vez puede tardar unos segundos mientras se carga la IA)"
-                            : "Cargando datos..."}
+                        {isVisualMode ? "Analizando imagen..." : "Cargando datos..."}
                     </div>
                 )}
 
@@ -314,14 +346,24 @@ const GoldMine = () => {
                     </div>
                 )}
 
-                {hasMore && !loading && !isVisualMode && opportunities.length > 0 && (
-                    <div style={{ textAlign: 'center', padding: '1rem' }}>
-                        <button
-                            className="btn-primary"
-                            onClick={() => loadData(false)}
-                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)' }}
-                        >
-                            Cargar más productos...
+                {!loading && !isVisualMode && opportunities.length > 0 && totalPages > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                        <button onClick={() => loadData(currentPage - 1)} disabled={currentPage === 1} className="btn-secondary" style={{ padding: '0.5rem 1rem', opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}>
+                            ← Anterior
+                        </button>
+
+                        {getPageNumbers().map((page, idx) => (
+                            page === '...' ? (
+                                <span key={`ellipsis-${idx}`} style={{ color: '#64748b', padding: '0 0.5rem' }}>...</span>
+                            ) : (
+                                <button key={page} onClick={() => loadData(page)} className="btn-secondary" style={{ padding: '0.5rem 0.75rem', minWidth: '40px', background: currentPage === page ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.05)', border: currentPage === page ? '1px solid #667eea' : '1px solid var(--glass-border)', fontWeight: currentPage === page ? 'bold' : 'normal' }}>
+                                    {page}
+                                </button>
+                            )
+                        ))}
+
+                        <button onClick={() => loadData(currentPage + 1)} disabled={currentPage === totalPages} className="btn-secondary" style={{ padding: '0.5rem 1rem', opacity: currentPage === totalPages ? 0.5 : 1, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}>
+                            Siguiente →
                         </button>
                     </div>
                 )}
@@ -334,10 +376,7 @@ const UsersIcon = ({ count }) => {
     let color = '#10b981';
     if (count > 2) color = '#f59e0b';
     if (count > 5) color = '#ef4444';
-
-    return (
-        <Users size={16} color={color} />
-    );
+    return <Users size={16} color={color} />;
 };
 
 export default GoldMine;

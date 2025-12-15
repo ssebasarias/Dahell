@@ -16,3 +16,4 @@ cache_huggingface
 pg_data
 dahell_db_data
 tmp
+backups

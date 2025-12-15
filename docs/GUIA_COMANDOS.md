@@ -1,7 +1,7 @@
 # 📚 GUÍA DE COMANDOS - DAHELL INTELLIGENCE
 
-**Versión:** 2.0 (Post-Normalización)  
-**Última actualización:** 2025-12-14
+**Versión:** 2.1 (Optimizado)  
+**Última actualización:** 2025-12-15
 
 ---
 

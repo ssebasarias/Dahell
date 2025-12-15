@@ -12,7 +12,7 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       # Script de inicialización: Crea las tablas al arrancar la primera vez
-      - ./dahell_db.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/dahell_db.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5433:5432"
     networks:
