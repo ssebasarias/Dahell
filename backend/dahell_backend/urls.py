@@ -25,6 +25,7 @@ from core.views import (
     ClusterAuditView,
     ClusterOrphansView,
     ClusterFeedbackView,
+    ClusterLabStatsView,
     ContainerStatsView,
     ContainerControlView
 )
@@ -38,6 +39,7 @@ urlpatterns = [
     path('api/system-logs/', SystemLogsView.as_view(), name='system-logs'),
     
     # Cluster Lab APIs
+    path('api/cluster-lab/stats/', ClusterLabStatsView.as_view(), name='cluster-stats'),
     path('api/cluster-lab/audit-logs/', ClusterAuditView.as_view(), name='cluster-audit'),
     path('api/cluster-lab/orphans/', ClusterOrphansView.as_view(), name='cluster-orphans'),
     path('api/cluster-lab/feedback/', ClusterFeedbackView.as_view(), name='cluster-feedback'),

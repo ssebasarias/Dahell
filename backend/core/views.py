@@ -2,7 +2,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Avg, Count, Q
-from .models import Product, UniqueProductCluster, ProductEmbedding, Warehouse, Category, ProductClusterMembership, AIFeedback
+from .models import Product, UniqueProductCluster, ProductEmbedding, Warehouse, Category, ProductClusterMembership, AIFeedback, ClusterDecisionLog
 from datetime import datetime, timedelta
 import pathlib
 import json
@@ -70,50 +70,36 @@ class DashboardStatsView(APIView):
         # ---------------------------------------------------------
         # 2. MARKET RADAR (Inteligencia por Categoría)
         # ---------------------------------------------------------
-        # Agregamos datos para ver qué categorías están saturadas y cuáles son rentables.
+        # OPTIMIZACION: Query única con Agregaciones (Elimina N+1 Problems)
+        # Calculamos conteo, precio promedio, margen promedio y competencia promedio en una sola consulta.
         
-        # Filtramos categorías con al menos 5 productos para evitar ruido
-        categories = Category.objects.annotate(
-            product_count=Count('productcategory__product')
-        ).filter(product_count__gte=5)
-        
-        # Calculamos promedios.
-        # Nota: La competencia promedio es difícil de sacar directo por ORM sin subqueries complejas,
-        # usaremos el promedio de precio como proxy de "Premium" y el count como "Volumen".
-        # Para "Saturacion" necesitamos cruzar con Clusters, lo haremos en python para mantenerlo simple y seguro ahora.
-        
+        radar_qs = Category.objects.filter(
+            productcategory__product__isnull=False
+        ).annotate(
+            product_count=Count('productcategory__product', distinct=True),
+            avg_price=Avg('productcategory__product__sale_price'),
+            avg_margin=Avg('productcategory__product__profit_margin'),
+            # Competencia: Promedio de competidores de los clusters asociados a los productos de la categoría
+            avg_competitiveness=Avg('productcategory__product__cluster_membership__cluster__total_competitors')
+        ).filter(
+            product_count__gte=5 # Solo categorías relevantes
+        ).order_by('-avg_margin') # Priorizar las más rentables
+
         radar_data = []
         
-        for cat in categories:
-            # Avg Price & Margin
-            stats = Product.objects.filter(productcategory__category=cat).aggregate(
-                avg_price=Avg('sale_price'),
-                avg_margin=Avg('profit_margin')
-            )
-            
-            # Competencia Promedio (Muestreo rápido)
-            # Tomamos una muestra de 20 productos de la categoría para estimar su saturación
-            sample_pids = Product.objects.filter(productcategory__category=cat).values_list('product_id', flat=True)[:20]
-            if not sample_pids: continue
-            
-            # Avg competitors de la muestra
-            avg_comp = 0
-            clusters_involved = ProductClusterMembership.objects.filter(product_id__in=sample_pids).select_related('cluster')
-            if clusters_involved.exists():
-                comps = [m.cluster.total_competitors for m in clusters_involved if m.cluster]
-                if comps:
-                    avg_comp = sum(comps) / len(comps)
-            
+        # Iteramos sobre los resultados ya calculados en memoria por la DB
+        for cat in radar_qs:
             radar_data.append({
                 "category": cat.name,
                 "volume": cat.product_count,
-                "avg_price": round(stats['avg_price'] or 0, 2),
-                "avg_margin": round(stats['avg_margin'] or 0, 2),
-                "competitiveness": round(avg_comp, 1) # Eje X del Radar
+                "avg_price": round(cat.avg_price or 0, 2),
+                "avg_margin": round(cat.avg_margin or 0, 2),
+                # Si no hay clusters, asumimos 1 (baja competencia)
+                "competitiveness": round(cat.avg_competitiveness or 1, 1)
             })
             
-        # Ordenar por oportunidad (Margen alto)
-        radar_data.sort(key=lambda x: x['avg_margin'], reverse=True)
+        # Limitamos a 15 para el frontend (ya vienen ordenados por margen)
+        radar_data = radar_data[:15]
 
         return Response({
             "tactical_feed": tactical_feed,
@@ -291,38 +277,77 @@ class GoldMineStatsView(APIView):
         return Response(result)
 
 
+from django.utils import timezone
 
+class ClusterLabStatsView(APIView):
+    """
+    Métricas para el Sidebar del Cluster Lab (XP y Progreso).
+    """
+    def get(self, request):
+        try:
+            # 1. Total Auditorías Realizadas (XP del Usuario)
+            total_feedback = AIFeedback.objects.count()
+            
+            # --- XP DIARIA ---
+            now = timezone.now()
+            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            daily_xp = AIFeedback.objects.filter(created_at__gte=start_of_day).count()
+            
+            # 2. Total Decisiones IA Registradas
+            total_logs = ClusterDecisionLog.objects.count()
 
+            # 3. Precisión Humana (Correcciones vs Confirmaciones)
+            correct_feedback = AIFeedback.objects.filter(feedback='CORRECT').count()
+            incorrect_feedback = AIFeedback.objects.filter(feedback='INCORRECT').count()
+            
+            # --- SALUD DEL SISTEMA ---
+            # Huérfanos: Clusters con singletons
+            pending_orphans = UniqueProductCluster.objects.filter(total_competitors=1).count()
+            total_products = Product.objects.count()
+
+            return Response({
+                "xp_audits": total_feedback,
+                "xp_today": daily_xp,
+                "ai_decisions": total_logs,
+                "feedback_correct": correct_feedback,
+                "feedback_incorrect": incorrect_feedback,
+                "pending_orphans": pending_orphans,
+                "total_products": total_products
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
 class ClusterAuditView(APIView):
     """
     API para el 'Cluster Lab'.
-    1. GET: Retorna los últimos logs de decisión del Clusterizer (JSONL).
+    1. GET: Retorna los últimos logs de decisión del Clusterizer (Persistent DB).
     2. POST: (Opcional) Simula un match entre dos productos (Dry Run).
     """
     def get(self, request):
-        log_path = pathlib.Path("/app/logs/cluster_audit.jsonl")
-        logs = []
-        
-        # Leer últimas 100 líneas
         try:
-            if log_path.exists():
-                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    # Leemos todo y tomamos el final
-                    lines = f.readlines()[-100:]
-                    for line in lines:
-                        line = line.strip()
-                        if not line: continue
-                        try:
-                            # Intentar reparar JSON truncado si es común
-                            if not line.endswith('}'): line += '}'
-                            logs.append(json.loads(line))
-                        except: 
-                            continue
+            limit = int(request.query_params.get('limit', 100))
+            # Ordering is defined in Meta class as ['-timestamp']
+            logs = ClusterDecisionLog.objects.all()[:limit]
             
-            # Invertir para ver lo más reciente primero
-            logs.reverse()
-            return Response(logs)
+            data = []
+            for log in logs:
+                data.append({
+                    "timestamp": log.timestamp.timestamp(), # Compatibility with frontend Date parsing
+                    "product_id": log.product_id,
+                    "candidate_id": log.candidate_id,
+                    "title_a": log.title_a,
+                    "title_b": log.title_b,
+                    "image_a": log.image_a,
+                    "image_b": log.image_b,
+                    "visual_score": log.visual_score,
+                    "text_score": log.text_score,
+                    "final_score": log.final_score,
+                    "decision": log.decision,
+                    "method": log.match_method,
+                    "active_weights": log.active_weights
+                })
+
+            return Response(data)
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
@@ -355,7 +380,7 @@ class ClusterOrphansView(APIView):
         """
         Simula la búsqueda de candidatos para un producto huérfano.
         Argumentos: { "product_id": 123 }
-        Retorna: Lista de Top 5 Candidatos con scores detallados.
+        Retorna: Lista de Top 15 (antes 10) Candidatos con scores detallados (Grid V3).
         """
         try:
             target_pid = request.data.get('product_id')
@@ -367,7 +392,7 @@ class ClusterOrphansView(APIView):
             with connection.cursor() as cur:
                 # Get Target Info
                 cur.execute("""
-                    SELECT p.title, pe.embedding_visual 
+                    SELECT p.title, p.url_image_s3, pe.embedding_visual 
                     FROM products p 
                     JOIN product_embeddings pe ON p.product_id = pe.product_id 
                     WHERE p.product_id = %s
@@ -375,9 +400,9 @@ class ClusterOrphansView(APIView):
                 res = cur.fetchone()
                 if not res: return Response({"error": "Product not found or not vectorized"}, status=404)
                 
-                target_title, target_vector = res
+                target_title, target_image, target_vector = res
                 
-                # 2. Buscar Top 10 Candidatos Visuales
+                # 2. Buscar Top 15 Candidatos Visuales (Expandido para Grid)
                 cur.execute("""
                     SELECT 
                         p.product_id, p.title, p.sale_price, p.url_image_s3,
@@ -386,7 +411,7 @@ class ClusterOrphansView(APIView):
                     JOIN products p ON pe.product_id = p.product_id
                     WHERE pe.product_id != %s AND pe.embedding_visual IS NOT NULL
                     ORDER BY dist ASC
-                    LIMIT 10
+                    LIMIT 15
                 """, (target_vector, target_pid))
                 
                 candidates = []
@@ -421,7 +446,7 @@ class ClusterOrphansView(APIView):
                     })
                 
                 return Response({
-                    "target": {"id": target_pid, "title": target_title},
+                    "target": {"id": target_pid, "title": target_title, "image": target_image},
                     "candidates": candidates
                 })
 

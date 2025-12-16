@@ -183,3 +183,23 @@ class ClusterConfig(models.Model):
 
     class Meta:
         db_table = 'cluster_config'
+
+class ClusterDecisionLog(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    product_id = models.BigIntegerField()
+    candidate_id = models.BigIntegerField()
+    title_a = models.TextField(null=True, blank=True)
+    title_b = models.TextField(null=True, blank=True)
+    image_a = models.TextField(null=True, blank=True)
+    image_b = models.TextField(null=True, blank=True)
+    visual_score = models.FloatField(null=True, blank=True)
+    text_score = models.FloatField(null=True, blank=True)
+    final_score = models.FloatField(null=True, blank=True)
+    decision = models.CharField(max_length=50, null=True, blank=True)  # MATCH / REJECT
+    match_method = models.CharField(max_length=50, null=True, blank=True)
+    active_weights = models.JSONField(default=dict, null=True, blank=True)
+
+    class Meta:
+        db_table = 'cluster_decision_logs'
+        ordering = ['-timestamp']
