@@ -164,36 +164,36 @@ def run_hybrid_clustering(conn):
     # 1. Cargar Configuración Dinámica
     CONFIG = load_config(cur)
     
-    # 2. Obtener productos SIN cluster pero CON vector (Prioridad Alta)
+    # 2. Obtener productos SIN cluster pero CON vector y CON concepto (Agent 1 Ready)
     # limitamos a 50 por ciclo para no bloquear
     sql_targets = """
-        SELECT p.product_id, p.title, p.sale_price, pe.embedding_visual, p.url_image_s3
+        SELECT p.product_id, p.title, p.sale_price, pe.embedding_visual, p.url_image_s3, p.taxonomy_concept
         FROM products p
         JOIN product_embeddings pe ON p.product_id = pe.product_id
         LEFT JOIN product_cluster_membership pcm ON p.product_id = pcm.product_id
         WHERE pcm.cluster_id IS NULL 
         AND pe.embedding_visual IS NOT NULL
+        AND p.taxonomy_concept IS NOT NULL
         LIMIT 50
     """
     cur.execute(sql_targets)
     targets = cur.fetchall()
     
     if not targets:
-        logger.info("✨ No hay productos pendientes de clusterizar (con vector).")
+        logger.info("✨ No hay productos clasificados pendientes. Esperando al Taxonomist...")
         cur.close()
         return
 
-    logger.info(f"⚡ Procesando {len(targets)} productos con Lógica Híbrida...")
+    logger.info(f"⚡ Procesando {len(targets)} productos con Lógica Híbrida (Bucket Strategy)...")
     
     count_joined = 0
     count_new = 0
 
     for row in targets:
-        pid, title, price, vector, img_a = row
+        pid, title, price, vector, img_a, concept = row
         
-        # 3. Buscar Candidatos (Vector Search en Base de Datos)
-        # Buscamos los 5 vecinos más cercanos que YA tengan cluster
-        # (Esto es crucial: unimos huérfanos a familias existentes)
+        # 3. Buscar Candidatos (Vector Search RESTRINGIDO al Bucket)
+        # Solo buscamos items que sean del mismo concepto taxonómico
         sql_candidates = """
             SELECT 
                 p.product_id, p.title, p.url_image_s3,
@@ -203,10 +203,11 @@ def run_hybrid_clustering(conn):
             JOIN products p ON pe.product_id = p.product_id
             JOIN product_cluster_membership pcm ON p.product_id = pcm.product_id
             WHERE pe.product_id != %s
+            AND p.taxonomy_concept = %s  -- <-- OPTIMIZACIÓN CRÍTICA (Nivel 2)
             ORDER BY distance ASC
             LIMIT 5
         """
-        cur.execute(sql_candidates, (vector, pid))
+        cur.execute(sql_candidates, (vector, pid, concept))
         raw_candidates = cur.fetchall()
         
         best_score = 0.0
@@ -254,6 +255,13 @@ def run_hybrid_clustering(conn):
                     "image": c_image
                 }
                 match_reason = method
+                
+                # REGLA DE AUDITORÍA INTELIGENTE:
+                # Si es un match, pero no es abrumadoramente obvio (ej: >0.95), márcarlo como "Duda" para auditoría humana.
+                # Auto-Pilot: Score > 0.85
+                # Human-Review: 0.65 < Score < 0.85 (Zona Gris)
+                if final_score < 0.85:
+                    match_reason = "NEEDS_AUDIT"
 
         # 5. Acción Final
         if best_match:

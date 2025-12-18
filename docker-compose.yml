@@ -138,6 +138,30 @@ services:
       - db
       - backend # Renamed from "backend API (Django REST Framework)" to match service name
 
+  classifier:
+    build:
+      context: .
+      target: selenium
+    container_name: dahell_classifier
+    env_file:
+      - .env.docker
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+    networks:
+      - dahell_net
+    command: python backend/manage.py classify_products
+    profiles: [ "workers" ]
+    restart: no
+    depends_on:
+      - db
+      
+    # Opcional: Si usa mucho CPU (LLM), podriamos limitar recursos, 
+    # pero confiamos en que Ollama corre fuera o en otro servicio.
+    # Si Ollama es local en el host, necesita acceder a host.docker.internal si usas Windows/Mac
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
   # 5. Backend API (Django REST Framework)
   backend:
     build:

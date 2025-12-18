@@ -2,7 +2,7 @@
 import {
     Activity, Box, Database, Search, Cpu, List, X,
     CheckCircle, XCircle, AlertTriangle, AlertCircle, Eye, FileText,
-    Layers, Zap, BarChart2, Award
+    Layers, Zap, BarChart2, Award, Trash2
 } from 'lucide-react';
 // import LazyImage from '../components/common/LazyImage.jsx';
 const LazyImage = ({ src, alt, style, className }) => (
@@ -279,27 +279,39 @@ const ClusterLab = () => {
     };
 
     const executeOrphanAction = async (actionType) => {
-        // actionType: 'MERGE_SELECTED' | 'CONFIRM_SINGLETON'
+        // actionType: 'MERGE_SELECTED' | 'CONFIRM_SINGLETON' | 'TRASH'
         setIsProcessingOrphan(true);
 
-        let payload = {
-            product_id: targetOrphan.id,
-            action: actionType,
-            candidates: selectedMatches
-        };
+        try {
+            const res = await fetch(`${API_URL}/api/cluster-lab/orphans/action/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: targetOrphan.id,
+                    action: actionType,
+                    candidates: selectedMatches
+                })
+            });
 
-        // Simulación: Log de acción (aquí iría el fetch real al backend)
-        console.log("Execute Action:", payload);
+            if (res.ok) {
+                // OPTIMISTIC UPDATE: Remover el huérfano procesado de la lista local inmediatamente
+                setOrphans(prev => prev.filter(o => o.product_id !== targetOrphan.id));
 
-        // Feedback simulado
-        setTimeout(() => {
+                // Cerrar Modal con delay mínimo para feedback visual
+                setTimeout(() => {
+                    setTargetOrphan(null);
+                    setOrphanCandidates([]);
+                    setSelectedMatches([]);
+                }, 500);
+            } else {
+                console.error("Action failed");
+            }
+
+        } catch (err) {
+            console.error("Error executing action:", err);
+        } finally {
             setIsProcessingOrphan(false);
-            setTargetOrphan(null); // CERRAR MODAL AUTOMÁTICAMENTE
-
-            // Opcional: Refrescar la lista de huérfanos para que desaparezca el procesado
-            setOrphans(prev => prev.filter(o => o.product_id !== payload.product_id));
-
-        }, 1500); // 1.5s delay para que el usuario vea el loading
+        }
     };
 
 
@@ -699,7 +711,10 @@ const ClusterLab = () => {
                                 </div>
                                 <div className="target-meta">
                                     <h4 className="target-title" title={targetOrphan.title}>{targetOrphan.title}</h4>
-                                    <p className="price-tag">${targetOrphan.price || 'N/A'}</p>
+                                    <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                        <span style={{ fontFamily: 'monospace', color: '#64748b', fontSize: '0.9rem', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4 }}>#{targetOrphan.id}</span>
+                                        <p className="price-tag" style={{ margin: 0 }}>${targetOrphan.price || 'N/A'}</p>
+                                    </div>
                                     <p className="helper-text">Busca gemelos en la red derecha 👉</p>
                                 </div>
                             </div>
@@ -728,8 +743,11 @@ const ClusterLab = () => {
                                                 </div>
                                             </div>
                                             <div className="mini-details">
-                                                <p className="mini-price">${cand.price}</p>
                                                 <p className="mini-title" title={cand.title}>{cand.title}</p>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span className="mini-id" style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>#{cand.id}</span>
+                                                    <p className="mini-price">${cand.price}</p>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -748,6 +766,14 @@ const ClusterLab = () => {
                             </div>
 
                             <div className="action-buttons">
+                                <button
+                                    className="btn-danger"
+                                    onClick={() => executeOrphanAction('TRASH')}
+                                    disabled={isProcessingOrphan}
+                                    title="Descartar producto (Basura/Irrelevante)"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
                                 <button
                                     className="btn-secondary"
                                     onClick={() => executeOrphanAction('CONFIRM_SINGLETON')}

@@ -82,7 +82,7 @@ def build_driver() -> webdriver.Chrome:
 
     return webdriver.Chrome(service=service, options=opts)
 
-def login(driver: webdriver.Chrome, timeout: int = 30) -> bool:
+def login(driver: webdriver.Chrome, timeout: int = 60) -> bool:
     try:
         logger.info("1) Abriendo página de login…")
         driver.get("https://app.dropi.co/login")
@@ -98,14 +98,22 @@ def login(driver: webdriver.Chrome, timeout: int = 30) -> bool:
         pwd_el.send_keys(PASSWORD)
         pwd_el.send_keys(Keys.RETURN)
 
-        logger.info("3) Esperando token...")
-        wait.until(lambda d: d.execute_script("return !!localStorage.getItem('DROPI_token')"))
+        logger.info("3) Esperando acceso (token o redirección)...")
+        # Esperar validación: Token en Storage O Redirección exitosa
+        wait.until(lambda d: d.execute_script("return !!localStorage.getItem('DROPI_token')") or "/dashboard" in d.current_url)
         
         driver.get_log("performance") # Limpiar logs
         logger.info("✅ Login exitoso")
         return True
     except Exception as e:
-        logger.error(f"Login fallido: {e}")
+        import traceback
+        logger.error(f"Login fallido: {type(e).__name__}: {e}")
+        try:
+            logger.error(f"URL Failed: {driver.current_url}")
+            text = driver.find_element(By.TAG_NAME, "body").text[:300].replace('\n', ' ')
+            logger.error(f"Pantalla: {text}")
+        except: pass
+        logger.error(traceback.format_exc())
         return False
 
 def navigate_to_catalog(driver: webdriver.Chrome) -> None:
@@ -259,6 +267,7 @@ class Command(BaseCommand):
             "id": p.get('id'),
             "sku": p.get('sku'),
             "name": p.get('name', 'Sin Nombre'),
+            "description": p.get('description', ''), # <-- Contexto para IA
             "type": p.get('type', 'SIMPLE'),
             "sale_price": p.get('sale_price'),
             "suggested_price": p.get('suggested_price'),

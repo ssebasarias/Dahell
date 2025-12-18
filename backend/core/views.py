@@ -411,7 +411,7 @@ class ClusterOrphansView(APIView):
                     JOIN products p ON pe.product_id = p.product_id
                     WHERE pe.product_id != %s AND pe.embedding_visual IS NOT NULL
                     ORDER BY dist ASC
-                    LIMIT 15
+                    LIMIT 50
                 """, (target_vector, target_pid))
                 
                 candidates = []
@@ -599,3 +599,75 @@ class ContainerControlView(APIView):
         else:
             return Response({"error": msg}, status=500)
 
+
+class ClusterOrphanActionView(APIView):
+    def post(self, request):
+        """
+        Ejecuta acciones reales sobre el Investigador de Diamantes.
+        Actions: MERGE_SELECTED, CONFIRM_SINGLETON, TRASH
+        """
+        from django.db import transaction
+        
+        try:
+            target_id = request.data.get('product_id')
+            action = request.data.get('action')
+            candidates = request.data.get('candidates', [])
+            
+            if not target_id or not action:
+                return Response({"error": "Missing params"}, status=400)
+
+            product = Product.objects.filter(product_id=target_id).first()
+            if not product:
+                return Response({"error": "Product not found"}, status=404)
+
+            print(f"⚡ ORPHAN ACTION: {action} on Target {target_id}")
+
+            with transaction.atomic():
+                if action == 'TRASH':
+                    # Incinerar producto: Borrar Embeddings y ClusterMembership
+                    # Esto lo saca del radar del sistema de IA y Clustering
+                    ProductEmbedding.objects.filter(product_id=target_id).delete()
+                    ProductClusterMembership.objects.filter(product_id=target_id).delete()
+                    # Opcional: Marcar producto como inactivo si tuvieramos campo status
+                    # product.status = 'TRASH'
+                    # product.save()
+                    msg = "Product incinerated (Embeddings & Cluster info removed)"
+
+                elif action == 'CONFIRM_SINGLETON':
+                    # Confirmar que es único. 
+                    # Simplemente nos aseguramos que tenga un cluster propio y valido.
+                    # El hecho de que el usuario lo revise ya valida su existencia.
+                    # Podríamos agregar un flag 'verified_by_human' en el futuro.
+                    msg = "Singleton confirmed"
+
+                elif action == 'MERGE_SELECTED':
+                    if not candidates:
+                        return Response({"error": "No candidates selected for merge"}, status=400)
+                    
+                    # 1. Obtener cluster del Target (o crearle uno si por milagro no tiene)
+                    membership, _ = ProductClusterMembership.objects.get_or_create(
+                        product_id=target_id,
+                        defaults={'cluster_id': UniqueProductCluster.objects.create().cluster_id}
+                    )
+                    target_cluster = membership.cluster
+
+                    # 2. Mover candidatos a este cluster
+                    for cand_id in candidates:
+                        # Borrar membresía anterior
+                        ProductClusterMembership.objects.filter(product_id=cand_id).delete()
+                        # Crear nueva en el cluster del target
+                        ProductClusterMembership.objects.create(
+                            product_id=cand_id,
+                            cluster=target_cluster
+                            # removed is_representative since it doesn't exist in the model
+                        )
+                    
+                    # 3. Recalcular metricas del cluster (Simulado update de timestamp para refrescar)
+                    target_cluster.save() # Dispara trigger de updated_at
+                    msg = f"Merged {len(candidates)} candidates into Cluster {target_cluster.cluster_id}"
+
+            return Response({"status": "success", "message": msg})
+            
+        except Exception as e:
+            print(f"Error executing orphan action: {str(e)}")
+            return Response({"error": str(e)}, status=500)

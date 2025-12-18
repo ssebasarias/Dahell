@@ -35,3 +35,9 @@ django-cors-headers
 # --- Utilities ---
 tqdm
 docker
+
+# --- Market Intelligence ---
+pytrends
+pgvector
+langchain
+langchain-ollama

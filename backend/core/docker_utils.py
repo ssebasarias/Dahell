@@ -18,6 +18,7 @@ CONTAINERS_TO_MONITOR = [
     "dahell_scraper", 
     "dahell_loader", 
     "dahell_vectorizer", 
+    "dahell_classifier",
     "dahell_clusterizer", 
     "dahell_ai_trainer",
     "dahell_db"
@@ -25,7 +26,7 @@ CONTAINERS_TO_MONITOR = [
 
 def get_docker_client():
     try:
-        return docker.from_env(timeout=2)
+        return docker.from_env(timeout=10)
     except Exception as e:
         logger.error(f"Error connecting to Docker: {e}")
         return None

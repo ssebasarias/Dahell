@@ -1,84 +1,283 @@
-1. 🎯 Objetivo Interpretado
-El objetivo del proyecto evoluciona a: "Detector de Saturación de Mercado para Dropshipping".
+# 🧭 VISIÓN REGLA DE ORO: DAHELL INTELLIGENCE
+## "El Analista de Datos 24/7"
 
-El Problema: Un mismo producto físico es vendido por múltiples proveedores usando diferentes nombres ("Kit Herramientas vs "Set 3 en 1") y fotos ligeramente editadas, haciendo difícil saber la competencia real.
-La Solución: Usar Inteligencia Artificial (Embeddings) para "ver" y "leer" los productos. Si dos productos tienen una distancia vectorial muy corta (sus imágenes o descripciones son semánticamente casi idénticas), el sistema los agrupará como "El Mismo Producto".
-El Valor: Calcular el "Score de Saturación". Si el grupo "Kit de Herramientas" tiene 50 items pero solo provienen de 2 proveedores únicos, es un producto ganador. Si tiene 50 items de 50 proveedores, está saturado.
+Este documento define la **Hoja de Ruta Maestra** y la filosofía inquebrantable del proyecto. No es solo un scraper, es un sistema de decisión autónomo diseñado para encontrar rentabilidad real sin depender de la intuición humana.
+
+---
+
+### 🧠 FILOSOFÍA CENTRAL (The Core)
+
+1.  **Cero Desperdicio de Cómputo:** No analizamos basura. Filtramos masivamente al inicio para dedicar recursos profundos (proxies, scraping intensivo) solo a los verdaderos candidatos.
+2.  **La Ecuación de Valor:**
+    *   **Dropi** nos da el **COSTO (Oferta)**.
+    *   **El Mercado (Shopify/Trends)** nos da el **PRECIO y DEMANDA**.
+    *   **Dahell** calcula el **MARGEN y VIABILIDAD**.
+3.  **Realidad > Teoría:** No nos importa lo que *debería* venderse. Nos importa lo que *ya se está vendiendo* (Shopify) y *cuánto* podemos ganar.
+
+---
+
+### 🗺️ CRONOLOGÍA DE DESARROLLO (Paso a Paso)
+
+Sigue este orden. No saltes fases. No "optimices" antes de que la fase anterior funcione.
+
+#### 🧱 FASE 0: BASE SÓLIDA (Estructura de Datos)
+**Objetivo:** Preparar el terreno para no tener "datos basura" después.
+*   [ ] **Definición de IDs Maestros:** Asegurar que todo producto tenga `product_id`, `concept_id` (agrupador semántico), `category_id`, y `source_id`.
+*   [ ] **Máquina de Estados:** Implementar los estados de análisis en la DB:
+    *   `is_discarded` (Basura detectada).
+    *   `is_candidate` (Pasó filtros básicos).
+    *   `analysis_level` (0=Solo Dropi, 1=Trend Check, 2=Shopify Recon, 3=Full Report).
+*   [ ] **Timestamps Críticos:** `first_seen`, `last_seen`, `source_date`.
+
+#### 🧱 FASE 1: INGESTA DE OFERTA (La Fuente - Dropi)
+**Objetivo:** Saber qué existe y cuánto cuesta conseguirlo.
+*   [ ] **Scraping Mínimo Viable (Dropi):**
+    *   Entrada: Barrido general de Dropi.
+    *   Salida Clave: Imagen, Título, **Precio Proveedor**, Stock, Nombre Proveedor.
+    *   *Nota:* Aquí dropi no decide qué es bueno, solo informa qué *hay disponible*.
+*   [ ] **Agrupación Básica (Clusterizer V1):**
+    *   Detectar competidores internos en Dropi. (¿50 proveedores venden el mismo "Cepillo Secador"?).
+    *   Output: `internal_saturation_score`.
+
+#### 🌍 FASE 2: FILTRO DE DEMANDA (El Primer Corte)
+**Objetivo:** Descartar categorías muertas antes de gastar recursos en ellas.
+*   [ ] **Identificador de Categorías Vivas:**
+    *   Agrupar productos por "Concepto" (ej: "Aspiradora de auto").
+    *   Consultar **Google Trends / Keywords Volume** por concepto.
+*   [ ] **La Guillotina:**
+    *   Si la tendencia es plana/muerta 📉 → `is_discarded = True`.
+    *   Si la tendencia es estacional/creciente 📈 → `is_candidate = True`.
+    *   *Ahorro:* Aquí eliminamos el 60% de la basura que nadie busca.
+
+#### 🔍 FASE 3: INVESTIGACIÓN DE MERCADO REAL (Shopify Recon)
+**Objetivo:** Validar si hay dinero real en la mesa para los "Candidatos".
+*   *Solo para productos con `is_candidate = True`*
+*   [ ] **El Rastreador de Tiendas (Shopify Scraper):**
+    *   Input: Imagen/Keywords del candidato.
+    *   Búsqueda: Google Search (`site:myshopify.com "keyword"`), Ad Libraries, o escaneo visual.
+    *   Pregunta: "¿Quién está vendiendo esto activamente?".
+*   [ ] **Extracción de Realidad:**
+    *   Recolectar **Precios de Venta al Público (PVP)** de las tiendas encontradas.
+    *   Recolectar fotos de marketing (mejores que las de Dropi).
+    *   Evaluar calidad de las tiendas competencia (¿Son webs profesionales o basura?).
+
+#### 📊 FASE 4: EL ANALISTA (Inteligencia de Negocio)
+**Objetivo:** Convertir datos en decisiones.
+*   [ ] **Cálculo de Margen Real:**
+    *   `Margen Bruto = Promedio PVP (Shopify) - Costo Proveedor (Dropi)`.
+    *   Si Margen < $X → Descartar (No es negocio).
+*   [ ] **Score de Viabilidad:**
+    *   Formula combinada: `(Demanda Alta) + (Margen Sano) + (Saturación Controlable)`.
+    *   Clasificación final: `❌ Basura`, `⚠️ Observación`, `✅ Candidato`, `🔥 Oportunidad (Gold Mine)`.
+
+#### 🤖 FASE 5: AUTOMATIZACIÓN & ML (El Futuro)
+**Objetivo:** Escalar lo que ya funciona manualmente.
+*   [ ] Entrenar modelos para predecir el `analysis_level` basado en la imagen.
+*   [ ] Alertas automáticas vía Telegram/Email cuando nace una `🔥 Oportunidad`.
+
+---
+
+### ⚠️ REGLAS DE ORO (Para no perder el rumbo)
+
+1.  **AliExpress es irrelevante para validación:** No lo scrapeamos. Usamos Dropi (costo) vs Shopify (venta). Ese es el gap de dinero.
+2.  **No investigues basura:** Si la categoría no tiene búsquedas en Trends, no gastes ni 1 segundo buscándola en Shopify.
+3.  **El "Precio Real" lo dicta el mercado:** El precio sugerido de Dropi es ficción. El precio promedio de 5 tiendas de Shopify es la realidad.
+4.  **Mejor 10 datos sólidos que 1000 datos sucios:** Cada paso debe dejar un rastro auditable (`analysis_log`).
+
+---
 
 
-Nivel 1: Match Exacto (Hard Clustering) ⚡
-Lógica: Si dos productos tienen el mismo warehouse_id (bodega física) Y el mismo sku (código de referencia), SON EL MISMO PRODUCTO. No gastamos IA aquí.
-Acción: Agrupamos directamente en la tabla unique_product_clusters.
-Nivel 2: Búsqueda Híbrida Vectorial (Soft Clustering) 🤖
-Para quién: Para los productos que NO hicieron match en el Nivel 1.
-Lógica: Usamos pgvector.
-Generamos embeddings de la Imagen (CLIP).
-Generamos embeddings del Texto (Título/Descripción).
-Buscamos similitud del coseno > 0.95 (casi idénticos).
-Nivel 3: Cálculo de Saturación (Business Intelligence) 💰
-Una vez agrupados, contamos: "Este cluster tiene 45 vendedores distintos".
-Calculamos métricas: Min/Max Precio, Margen Promedio.
-Etiquetamos el cluster como: "SATURADO" (Rojo), "OPORTUNIDAD" (Verde).
+______________________________________________
+
+4️⃣ Fuente CLAVE #1 — Marketplaces (INTENCIÓN DE COMPRA)
+🔥 Amazon / MercadoLibre / Etsy (NO para ventas, para texto)
+
+No te interesa el ranking.
+No te interesa el score.
+No te interesa competir ahí.
+
+👉 Te interesa el lenguaje de la gente que ya está comprando.
+
+Qué sacás de ahí:
+
+Reviews recientes (últimos 30–90 días)
+
+Preguntas de compradores
+
+Palabras repetidas en quejas y elogios
+
+Por qué esto corrige a Google Trends:
+
+Si algo se busca pero no se compra, acá muere
+
+Si la gente habla en términos de uso real, es señal fuerte
+
+Reduce falsos positivos semánticos
+
+📌 Ejemplo:
+
+Trends dice “placa”
+
+Amazon dice “placa de freno”, “placa decorativa”, “placa para perro”
+👉 El embedding se desambigua solo con contexto real.
+
+🔑 Esto no es scraping masivo:
+es muestreo inteligente por categoría viva.
+
+5️⃣ Fuente CLAVE #2 — Ads Library (INTENCIÓN COMERCIAL)
+Meta Ads Library / TikTok Ads Library
+
+Esto es brutal y poca gente lo usa bien.
+
+Qué mide:
+
+Si alguien está gastando dinero HOY en ese concepto
+
+Si hay creativos activos y recurrentes
+
+Si el mensaje es directo a venta o solo awareness
+
+Por qué es clave:
+
+💰 Nadie paga ads por algo que no convierte
+
+Si una categoría:
+
+tiene búsquedas (Google Trends)
+
+tiene anuncios activos
+👉 ya cruzaste interés + dinero
+
+📌 Métrica simple:
+
+Nº de anuncios únicos por concepto
+
+Tiempo activo
+
+Variación de copy (testeo = mercado vivo)
+
+6️⃣ Fuente CLAVE #3 — Redes sociales (LENGUAJE NATURAL)
+
+⚠️ Acá NO busqués views virales.
+
+Buscá:
+
+Frecuencia
+
+Repetición semántica
+
+Lenguaje espontáneo
+
+TikTok / Instagram / YouTube Shorts
+
+Qué sirve:
+
+Comentarios
+
+Descripciones
+
+Hashtags naturales (no forzados)
+
+Por qué esto es mejor que sentiment analysis clásico:
+
+El “sentimiento” positivo/negativo no importa tanto.
+
+Lo que importa es:
+
+¿Hablan de usarlo?
+
+¿Hablan de comprarlo?
+
+¿Hablan de reemplazar algo?
+
+📌 Ejemplo:
+
+“al fin encontré algo que no se me daña”
+“esto reemplazó X”
+“no sabía que necesitaba esto”
+
+Eso es señal de dolor + solución, no solo hype.
+
+7️⃣ Fuente CLAVE #4 — Noticias (CONTEXTO MACRO)
+
+Esto NO es para productos individuales.
+Es para categorías completas.
+
+Noticias económicas / regulatorias / estilo de vida
+
+Qué detectás:
+
+Cambios de hábitos
+
+Regulaciones
+
+Tendencias de consumo
+
+Crisis / restricciones
+
+📌 Ejemplos reales:
+
+Leyes → salud, seguridad, mascotas
+
+Crisis → ahorro, reparación, DIY
+
+Moda de vida sana → accesorios fitness
+
+Esto te ayuda a:
+
+Confirmar si una categoría tiene soporte estructural
+
+No solo una moda temporal
+
+8️⃣ Cómo unir TODO sin hardcodear (esto es clave)
+
+👉 No decisiones binarias. Scores acumulativos.
+
+Cada fuente suma o resta confianza.
+
+Ejemplo de scoring conceptual:
+
+Category Confidence Score =
+  GoogleTrendsScore * 0.25
++ MarketplaceLanguageScore * 0.25
++ AdsPresenceScore * 0.20
++ SocialFrequencyScore * 0.20
++ NewsContextScore * 0.10
 
 
-🗺️ Hoja de Ruta: Lo que falta para la victoria
-Para completar el "Detector de Saturación de Mercado", nos faltan estas etapas clave:
+🔑 Si una categoría solo vive en Google Trends → muere
+🔑 Si vive en varias capas → pasa
 
-1. 🧩 El Organizador (clusterizer.py)
-Este es el corazón lógico del negocio. Un script que corre periódicamente y pone orden en el caos.
+9️⃣ Cómo esto soluciona tu miedo principal
 
-Paso 1 (Hard Match): Agrupación inmediata por "Huella Digital de Bodega".
-Si Bodega ID = X y SKU = Y → Son el mismo producto.
-Paso 2 (Soft Match / Vectorial): El detective de IA.
-Para los "huérfanos" (sin bodega ID), preguntar a la DB: "¿Qué otros productos tienen un vector de imagen a menos de 0.05 de distancia de este?".
-Agruparlos juntos.
-Resultado: Llenar las tablas unique_product_clusters y product_cluster_membership.
-2. 📊 El Juez (Scoring)
-Integrado en el clusterizer o como vistas SQL.
+“No quiero confiar en una sola señal ni en mi criterio”
 
-Calcular métricas por cada Cluster encontrado:
-Nivel de Saturación: ¿Cuántos proveedores distintos venden esto? (1-3: Oportunidad, 10+: Saturado).
-Análisis de Precio: Detectar arbitraje. (¿Alguien lo vende a $20k y otro a $50k?).
-3. 🖥️ El Visor (Dashboard)
-Necesitas ver los resultados para tomar decisiones.
+Perfecto, porque ahora:
 
-Crear una interfaz web simple (probablemente con Streamlit por rapidez).
-Pantalla 1 "Oportunidades": Filtra productos ganadores (Poca competencia, buen margen).
-Pantalla 2 "Investigador": Pegas un link o subes una foto, y te dice "Este producto ya lo venden 50 personas, huye".
+❌ No decidís vos
 
+❌ No decide Google
 
-Opinión sobre el cambio de Stack (Adiós Streamlit, Hola Django+React)
-Decisión: Excelente y muy madura. Streamlit es fantástico para prototipos rápidos, pero cuando tu herramienta se vuelve un "Producto real" con lógica de negocio compleja (como este detector de minas de oro), Streamlit se convierte en una camisa de fuerza.
+❌ No decide un embedding aislado
 
-Django (Backend): Te dará la robustez que buscas. Su ORM es sólido para manejar millones de registros y su seguridad es estándar de la industria.
-React (Frontend): Te permitirá esa "estética WOW" y animaciones fluidas que Streamlit simplemente no puede ofrecer.
-Compatibilidad: Total. Es una de las parejas más comunes en la industria (Django Rest Framework para la API + React para el cliente). Funcionan perfecto juntos.
-Análisis de Nuevos Criterios para Clustering (Basado en tu JSON)
-He revisado el archivo index deproductos en dropi.json y es una mina de oro de metadatos. El código actual está desperdiciando el 90% de esta información al mirar solo la foto.
+👉 Decide la convergencia de señales independientes
 
-Aquí están los 5 Nuevos Criterios que deberíamos implementar para una precisión quirúrgica:
+Eso es ciencia de datos aplicada, no dropshipping de gurú.
 
-1. "Hard Match" por SKU (Código de Referencia)
-En el JSON veo campos sku: "854581", "MOTOXT120".
+10️⃣ Conclusión clara y directa
 
-La Lógica: Si dos productos tienen el mismo SKU (o muy similar, ej: XT120 y MOTO-XT120), SON EL MISMO PRODUCTO.
-Impacto: Esto elimina la necesidad de adivinar con IA. Es una coincidencia exacta de nivel "código de barras".
-2. Similitud Semántica de Título (name)
-Caso: "Audifonos Moto XT120" vs "Auriculares Bluetooth Motorola XT-120".
-La Lógica: Usar una distancia de texto (como Levenshtein o Jaccard) junto con la IA.
-Regla: Si la Imagen es 90% similar Y el Texto es >60% similar -> Confirmar Cluster. Si la imagen es igual pero el texto es totalmente diferente (ej: "Funda iPhone" vs "iPhone 13"), ROMPE el cluster.
-3. Huella Digital de Variaciones
-Veo que tienes productos VARIABLE con arrays de variations y attributes (TALLA, COLOR).
+Lo que estás construyendo NO es ambicioso de más.
+Es ambicioso en el sentido correcto.
 
-La Lógica: Un producto que tiene atributos "TALLA/COLOR" (Ropa) NUNCA puede ser igual a uno que no los tiene o tiene otros (Tecnología).
-Uso: Usar la estructura de variantes como un "ADN" del producto para descartar falsos positivos visuales.
-4. Detección de "Re-vendedores" (user + store_name)
-Tienes datos del proveedor (user.id, store_name).
+Tu herramienta:
 
-La Lógica: Si detectamos que el mismo user.id sube 5 productos con fotos casi idénticas pero títulos diferentes, probablemente sean variantes (ej. colores distintos) y no competencia real. Podemos agruparlos como "1 Oportunidad (con variantes)" en lugar de "5 Competidores".
-5. Validación de Categoría (categories)
-La Lógica: Un filtro de seguridad simple. Si el Cluster 1 tiene productos de "Mascotas" y "Tecnología" mezclados, algo salió mal. Usar la categoría para limpiar clusters sucios.
-Conclusión
-El sistema actual es "tuerto" (solo ve imágenes). Integrando SKU y Texto (name) como criterios primarios, y usando la imagen como validación secundaria, la confiabilidad del detector pasaría de un ~60% a un 95%+.
+No busca “el producto ganador”
 
-¿Quieres que proceda a crear la estructura del proyecto en Django para empezar a migrar la lógica?
+Busca reducir incertidumbre
+
+Busca separar ruido de señal
+
+Busca ahorrar tiempo y dinero real
+
+Y eso, parce,
+👉 es exactamente lo que hace un analista de datos senior, no un vendedor de cursos.

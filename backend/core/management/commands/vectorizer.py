@@ -116,7 +116,10 @@ class Vectorizer:
                     LEFT JOIN product_embeddings pe ON p.product_id = pe.product_id
                     WHERE p.url_image_s3 IS NOT NULL 
                     AND p.url_image_s3 != ''
-                    AND (pe.embedding_visual IS NULL)
+                    AND (
+                        pe.product_id IS NULL 
+                        OR (pe.embedding_visual IS NULL AND p.updated_at > pe.processed_at)
+                    )
                     LIMIT 100;
                 """
                 cur.execute(sql_queue)
@@ -193,7 +196,7 @@ class Vectorizer:
                      sql_upsert_dummy = """
                         INSERT INTO product_embeddings (product_id, processed_at)
                         VALUES (%s, NOW())
-                        ON CONFLICT (product_id) DO NOTHING;
+                        ON CONFLICT (product_id) DO UPDATE SET processed_at = NOW();
                     """
                      # Batch update for failed
                      for pid in failed_ids:

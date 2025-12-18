@@ -605,6 +605,41 @@
     cursor: not-allowed;
 }
 
+.btn-danger {
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    transform: translateY(-1px);
+}
+
+.btn-danger:disabled {
+    border-color: #334155;
+    color: #475569;
+    cursor: not-allowed;
+    background: transparent;
+}
+
+.btn-secondary:disabled {
+    border-color: #334155;
+    color: #475569;
+    cursor: not-allowed;
+}
+
 @keyframes popIn {
     0% {
         transform: scale(0.5);

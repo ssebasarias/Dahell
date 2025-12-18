@@ -7,14 +7,20 @@ const ServiceCard = ({ id, name, displayParams, icon: Icon, actions = [] }) => {
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState(displayParams || { status: 'unknown', cpu: 0, ram_mb: 0 });
 
-    // Update local stats when parent props change
+    // Update local stats when parent props change, ONLY if not currently processing an action
     useEffect(() => {
-        if (displayParams) setStats(displayParams);
-    }, [displayParams]);
+        if (displayParams && !loading) {
+            setStats(displayParams);
+        }
+    }, [displayParams, loading]);
 
     const status = stats?.status || 'unknown';
-    const isRunning = status === 'running';
-    const isStopped = ['exited', 'created', 'not_found', 'none', 'unknown'].includes(status);
+    // Normalized states
+    const isUpdating = status === 'updating...';
+    const isRunning = status === 'running' || status === 'restarting' || (isUpdating && stats.cpu > 0);
+    // If updating and we don't know, assume stopped to show Start button (safer) or just fallback.
+    // Let's force isStopped if not running and not updating, OR if updating but likely stopped.
+    const isStopped = !isRunning && !isUpdating;
 
     // UI Colors based on status
     let statusColor = '#94a3b8'; // Default grey
@@ -26,12 +32,15 @@ const ServiceCard = ({ id, name, displayParams, icon: Icon, actions = [] }) => {
     } else if (status === 'created') {
         statusColor = '#3b82f6'; // Blue
         bgColor = 'rgba(59, 130, 246, 0.1)';
-    } else if (status === 'exited') {
+    } else if (status === 'exited' || status === 'dead' || isStopped) {
         statusColor = '#64748b'; // Dark Grey
         bgColor = 'rgba(100, 116, 139, 0.1)';
     } else if (status === 'error') {
         statusColor = '#ef4444'; // Red
         bgColor = 'rgba(239, 68, 68, 0.1)';
+    } else if (isUpdating) {
+        statusColor = '#f59e0b'; // Amber/Orange
+        bgColor = 'rgba(245, 158, 11, 0.1)';
     }
 
     const handleAction = async (action) => {
@@ -121,7 +130,7 @@ const ServiceCard = ({ id, name, displayParams, icon: Icon, actions = [] }) => {
                 {isStopped && (
                     <button
                         onClick={() => handleAction('start')}
-                        disabled={loading}
+                        disabled={loading || isUpdating}
                         className="control-btn"
                         style={{ background: '#10b981', color: '#fff', flex: 1 }}
                     >
@@ -132,7 +141,7 @@ const ServiceCard = ({ id, name, displayParams, icon: Icon, actions = [] }) => {
                 {isRunning && (
                     <button
                         onClick={() => handleAction('stop')}
-                        disabled={loading}
+                        disabled={loading || isUpdating}
                         className="control-btn"
                         style={{ background: '#ef4444', color: '#fff', flex: 1 }}
                     >
@@ -140,10 +149,20 @@ const ServiceCard = ({ id, name, displayParams, icon: Icon, actions = [] }) => {
                     </button>
                 )}
 
+                {isUpdating && !isRunning && !isStopped && (
+                    <button
+                        disabled
+                        className="control-btn"
+                        style={{ background: '#f59e0b', color: '#fff', flex: 1, opacity: 0.8 }}
+                    >
+                        <RotateCcw size={16} className="spin" /> Processing...
+                    </button>
+                )}
+
                 {actions.includes('restart') && isRunning && (
                     <button
                         onClick={() => handleAction('restart')}
-                        disabled={loading}
+                        disabled={loading || isUpdating}
                         className="control-btn"
                         style={{ background: '#3b82f6', color: '#fff', width: '40px', padding: 0 }}
                         title="Force Restart"
@@ -275,7 +294,8 @@ const SystemStatus = () => {
         { id: 'scraper', name: 'Web Scraper', icon: Activity, actions: ['restart'] },
         { id: 'loader', name: 'Data Loader', icon: Database, actions: ['restart'] },
         { id: 'vectorizer', name: 'AI Vectorizer', icon: Cpu, actions: ['restart'] },
-        { id: 'clusterizer', name: 'Cluster Engine', icon: Server, actions: ['restart'] },
+        { id: 'classifier', name: 'Agent 1: Classifier', icon: Server, actions: ['restart'] },
+        { id: 'clusterizer', name: 'Agent 2: Clusterizer', icon: Server, actions: ['restart'] },
         { id: 'ai_trainer', name: 'AI Trainer (Cerebro)', icon: Activity, actions: ['restart'] },
     ];
 
@@ -324,6 +344,7 @@ const SystemStatus = () => {
                     <LogTerminal title="scraper" logs={logs} color="#f59e0b" />
                     <LogTerminal title="loader" logs={logs} color="#3b82f6" />
                     <LogTerminal title="vectorizer" logs={logs} color="#a855f7" />
+                    <LogTerminal title="classifier" logs={logs} color="#ec4899" />
                     <LogTerminal title="clusterizer" logs={logs} color="#10b981" />
                     <LogTerminal title="ai_trainer" logs={logs} color="#ec4899" />
                 </div>

@@ -11,6 +11,7 @@ from django.core.management.base import BaseCommand
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from urllib.parse import quote
 
 load_dotenv()
 
@@ -123,17 +124,18 @@ class Command(BaseCommand):
         if prod_id:
             session.execute(text("""
                 INSERT INTO products (
-                    product_id, supplier_id, sku, title, 
+                    product_id, supplier_id, sku, title, description,
                     sale_price, suggested_price, product_type, 
                     url_image_s3, updated_at
                 ) VALUES (
-                    :pid, :sid, :sku, :title, 
+                    :pid, :sid, :sku, :title, :desc,
                     :price, :sugg, :type, 
                     :img, NOW()
                 )
                 ON CONFLICT (product_id) DO UPDATE
                 SET sale_price = EXCLUDED.sale_price,
                     suggested_price = EXCLUDED.suggested_price,
+                    description = COALESCE(EXCLUDED.description, products.description),
                     updated_at = NOW(),
                     url_image_s3 = COALESCE(EXCLUDED.url_image_s3, products.url_image_s3)
             """), {
@@ -141,48 +143,15 @@ class Command(BaseCommand):
                 "sid": supp.get("id") if supp else None,
                 "sku": data.get("sku"),
                 "title": data.get("name"),
+                "desc": data.get("description") or None, # <-- Send None if empty, so COALESCE keeps existing DB value
                 "price": data.get("sale_price"),
                 "sugg": data.get("suggested_price"),
                 "type": data.get("type"),
-                "img": data.get("image_url")
+                "img": self._extract_image(data)
             })
 
             # --- 4. Categorías ---
-            categories = data.get("categories", [])
-            if categories and isinstance(categories, list):
-                for cat_name in categories:
-                    if not cat_name or not isinstance(cat_name, str):
-                        continue
-                    
-                    cat_name = cat_name.strip()
-                    if not cat_name:
-                        continue
-                    
-                    # Insertar categoría si no existe
-                    try:
-                        session.execute(text("""
-                            INSERT INTO categories (name)
-                            VALUES (:name)
-                            ON CONFLICT (name) DO NOTHING
-                        """), {"name": cat_name})
-                    except:
-                        pass
-                    
-                    # Obtener el ID de la categoría
-                    try:
-                        result = session.execute(text("""
-                            SELECT id FROM categories WHERE name = :name
-                        """), {"name": cat_name})
-                        cat_id = result.fetchone()[0]
-                        
-                        # Crear relación producto-categoría
-                        session.execute(text("""
-                            INSERT INTO product_categories (product_id, category_id)
-                            VALUES (:pid, :cid)
-                            ON CONFLICT (product_id, category_id) DO NOTHING
-                        """), {"pid": prod_id, "cid": cat_id})
-                    except:
-                        pass
+            self.process_categories(session, prod_id, data.get("categories", []))
 
             # --- 5. Stock ---
             if wh_id:
@@ -193,3 +162,63 @@ class Command(BaseCommand):
                         VALUES (:pid, :wid, :qty)
                     """), {"pid": prod_id, "wid": wh_id, "qty": qty})
                 except: pass
+
+    def _extract_image(self, data):
+        # 1. Try processed field
+        img = data.get("image_url")
+        if img: return img
+
+        # 2. Try raw gallery
+        gallery = data.get("gallery", [])
+        if gallery and isinstance(gallery, list):
+            first = gallery[0]
+            if isinstance(first, dict):
+                raw = first.get("urlS3") or first.get("url")
+                if raw:
+                    # Cloudfront domain from scraper.py
+                    return f"https://d39ru7awumhhs2.cloudfront.net/{quote(raw, safe='/')}"
+        return None
+
+    def _extract_category_name(self, item):
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            return item.get("name")
+        return None
+
+    def process_categories(self, session, prod_id, categories):
+        if not categories or not isinstance(categories, list):
+            return
+
+        for item in categories:
+            cat_name = self._extract_category_name(item)
+            if not cat_name: continue
+            
+            cat_name = cat_name.strip()
+            if not cat_name: continue
+            
+            # Insertar categoría si no existe
+            try:
+                session.execute(text("""
+                    INSERT INTO categories (name)
+                    VALUES (:name)
+                    ON CONFLICT (name) DO NOTHING
+                """), {"name": cat_name})
+            except: pass
+            
+            # Obtener el ID y Relacionar
+            try:
+                result = session.execute(text("""
+                    SELECT id FROM categories WHERE name = :name
+                """), {"name": cat_name})
+                row = result.fetchone()
+                if row:
+                    cat_id = row[0]
+                    session.execute(text("""
+                        INSERT INTO product_categories (product_id, category_id)
+                        VALUES (:pid, :cid)
+                        ON CONFLICT (product_id, category_id) DO NOTHING
+                    """), {"pid": prod_id, "cid": cat_id})
+            except: pass
+
+    # Refactored ingest_record call for categories (replace logic inside ingest_record)
