@@ -31,7 +31,8 @@ ch = logging.StreamHandler(sys.stdout)
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-RAW_DIR = pathlib.Path(os.getenv("RAW_DIR", "raw_data"))
+RAW_DIR = pathlib.Path(os.getenv("RAW_DIR", "/app/raw_data"))
+
 
 class Command(BaseCommand):
     help = 'ETL Loader Daemon'
@@ -114,7 +115,7 @@ class Command(BaseCommand):
                         continue # Salta lineas corruptas de JSON
                     except Exception as e:
                         # Logueamos error pero NO detenemos el proceso completo, solo esa linea
-                        # logger.warning(f"Error en linea: {e}") 
+                        logger.warning(f"Error en linea: {e}") 
                         errors_count += 1
                         session.rollback()
             
@@ -144,8 +145,8 @@ class Command(BaseCommand):
         wh_id = data.get("warehouse_id")
         if wh_id:
             session.execute(text("""
-                INSERT INTO warehouses (warehouse_id, last_seen_at) 
-                VALUES (:wid, NOW())
+                INSERT INTO warehouses (warehouse_id, first_seen_at, last_seen_at) 
+                VALUES (:wid, NOW(), NOW())
                 ON CONFLICT (warehouse_id) DO UPDATE SET last_seen_at = NOW()
             """), {"wid": wh_id})
 
@@ -153,8 +154,8 @@ class Command(BaseCommand):
         supp = data.get("supplier", {})
         if supp and supp.get("id"):
             session.execute(text("""
-                INSERT INTO suppliers (supplier_id, name, store_name, plan_name, updated_at)
-                VALUES (:sid, :name, :store, :plan, NOW())
+                INSERT INTO suppliers (supplier_id, name, store_name, plan_name, is_verified, created_at, updated_at)
+                VALUES (:sid, :name, :store, :plan, FALSE, NOW(), NOW())
                 ON CONFLICT (supplier_id) DO UPDATE
                 SET name = EXCLUDED.name, store_name = EXCLUDED.store_name, plan_name = EXCLUDED.plan_name, updated_at = NOW()
             """), {
@@ -171,11 +172,11 @@ class Command(BaseCommand):
                 INSERT INTO products (
                     product_id, supplier_id, sku, title, description,
                     sale_price, suggested_price, product_type, 
-                    url_image_s3, updated_at
+                    url_image_s3, is_active, created_at, updated_at
                 ) VALUES (
                     :pid, :sid, :sku, :title, :desc,
                     :price, :sugg, :type, 
-                    :img, NOW()
+                    :img, TRUE, NOW(), NOW()
                 )
                 ON CONFLICT (product_id) DO UPDATE
                 SET sale_price = EXCLUDED.sale_price,
@@ -265,5 +266,3 @@ class Command(BaseCommand):
                         ON CONFLICT (product_id, category_id) DO NOTHING
                     """), {"pid": prod_id, "cid": cat_id})
             except: pass
-
-    # Refactored ingest_record call for categories (replace logic inside ingest_record)

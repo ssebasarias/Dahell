@@ -169,7 +169,7 @@ const ServiceCard = ({ id, name, displayParams, icon: Icon, actions = [] }) => {
                 )}
             </div>
             {/* Styles for spinner if not global yet */}
-            <style jsx>{`
+            <style>{`
                 .spinner {
                    width: 20px;
                    height: 20px;

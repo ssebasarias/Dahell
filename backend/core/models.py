@@ -31,11 +31,11 @@ class Supplier(models.Model):
         return f"{self.store_name or self.name}"
 
 
-# Intento de cargar VectorField de pgvector, fallback a list si no está instalado en local dev
+# Intento de cargar VectorField de pgvector, fallback a list si no existe
 try:
     from pgvector.django import VectorField
 except ImportError:
-    # Hack for compatibility when pgvector is not installed (e.g. local Windows without lib)
+    # Hack for compatibility when pgvector is not installed
     class VectorField(models.JSONField):
         def __init__(self, *args, **kwargs):
             kwargs.pop('dimensions', None) # Swallow dimensions arg
@@ -46,14 +46,14 @@ class Category(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(null=True, blank=True)
-    # Cerebro Semántico (384 dimensiones)
+    # Cerebro Semantico (384 dimensiones)
     embedding = VectorField(dimensions=384, null=True, blank=True)
     
-    # Validación Capa 4 (Intención y Coherencia)
+    # Validacion Capa 4 (Intencion y Coherencia)
     semantic_coherence_score = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
     intent_validation_status = models.CharField(max_length=50, default='PENDING')
 
-    # Taxonomía (Capa 5 - Orden)
+    # Taxonomia (Capa 5 - Orden)
     taxonomy_type = models.CharField(max_length=50, default='UNKNOWN') # INDUSTRY, CONCEPT, PRODUCT
     suggested_parent = models.CharField(max_length=100, null=True, blank=True)
 
@@ -62,8 +62,6 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
-
-# ... (El resto del archivo se mantiene igual hasta el final, donde agregamos la nueva clase) ...
 
 class MarketplaceFeedback(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -84,8 +82,8 @@ class MarketplaceFeedback(models.Model):
 
 class FutureEvent(models.Model):
     """
-    Tabla Maestra de Eventos Vectorizados (Reemplaza al MD estático).
-    Permite cruzar 'Navidad' con categorías semánticamente similares en DB.
+    Tabla Maestra de Eventos Vectorizados (Reemplaza al MD estatico).
+    Permite cruzar 'Navidad' con categorias semanticamente similares en DB.
     """
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=255)
@@ -103,9 +101,6 @@ class FutureEvent(models.Model):
         return f"{self.name} ({self.date_start})"
 
 
-
-
-
 class Product(models.Model):
     product_id = models.BigIntegerField(primary_key=True)
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, db_column='supplier_id', null=True, blank=True)
@@ -118,7 +113,7 @@ class Product(models.Model):
     product_type = models.CharField(max_length=50, null=True, blank=True)
     url_image_s3 = models.TextField(null=True, blank=True)
     
-    # Taxonomía Jerárquica (V7 - Agent 1 Output)
+    # Taxonomia Jerarquica (V7 - Agent 1 Output)
     taxonomy_concept = models.CharField(max_length=255, null=True, blank=True) # "Silla Gamer"
     taxonomy_industry = models.CharField(max_length=255, null=True, blank=True) # "Muebles"
     taxonomy_level = models.CharField(max_length=50, null=True, blank=True) # "CONCEPT", "PRODUCT"
@@ -172,7 +167,7 @@ class UniqueProductCluster(models.Model):
         null=True,
         blank=True
     )
-    # Métricas de Oferta (Internas)
+    # Metricas de Oferta (Internas)
     total_competitors = models.IntegerField(default=1)
     average_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     saturation_score = models.CharField(max_length=20, null=True, blank=True)
@@ -180,11 +175,11 @@ class UniqueProductCluster(models.Model):
     # Identidad Humana (V2)
     concept_name = models.CharField(max_length=255, null=True, blank=True)
 
-    # Máquina de Estados (V2 - Critical)
+    # Maquina de Estados (V2 - Critical)
     analysis_level = models.IntegerField(default=0) # 0=Nuevo, 1=Trends Checked, 2=Shopify Checked, 3=Full Audit
     is_discarded = models.BooleanField(default=False)
     discard_reason = models.CharField(max_length=255, null=True, blank=True)
-    is_candidate = models.BooleanField(default=False) # True = Pasó filtros básicos
+    is_candidate = models.BooleanField(default=False) # True = Paso filtros basicos
 
     # Inteligencia de Mercado - DEMANDA (V2)
     trend_score = models.IntegerField(default=0) # 0-100 (Google Trends)
@@ -213,9 +208,6 @@ class UniqueProductCluster(models.Model):
 
     def __str__(self):
         return f"Cluster {self.cluster_id} - {self.concept_name or 'Unknown'} ({self.total_competitors} sellers)"
-
-
-
 
 
 class ProductClusterMembership(models.Model):
@@ -249,8 +241,8 @@ class ProductEmbedding(models.Model):
         db_column='product_id', 
         primary_key=True
     )
-    # Vector Visual (768 dim for CLIP Large)
-    embedding_visual = VectorField(dimensions=768, null=True, blank=True)
+    # Vector Visual (1152 dim for SigLIP)
+    embedding_visual = VectorField(dimensions=1152, null=True, blank=True)
     
     processed_at = models.DateTimeField(null=True, blank=True)
 
@@ -319,10 +311,9 @@ class MarketIntelligenceLog(models.Model):
     data_point = models.CharField(max_length=100) # "trend_score", "competitor_price"
     value_text = models.TextField(null=True, blank=True)
     value_numeric = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    # Contexto Vectorial (¿Qué vector generó este hallazgo?). 
+    # Contexto Vectorial (Que vector genero este hallazgo?). 
     embedding_context = VectorField(dimensions=384, null=True, blank=True)
     snapshot_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'market_intelligence_logs'
-

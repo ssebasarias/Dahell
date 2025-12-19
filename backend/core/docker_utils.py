@@ -26,11 +26,20 @@ CONTAINERS_TO_MONITOR = [
     "dahell_db"
 ]
 
+_docker_error_logged = False
+
 def get_docker_client():
+    global _docker_error_logged
     try:
-        return docker.from_env(timeout=10)
+        c = docker.from_env(timeout=10)
+        if _docker_error_logged:
+            logger.info("✅ Docker connection re-established.")
+            _docker_error_logged = False
+        return c
     except Exception as e:
-        logger.error(f"Error connecting to Docker: {e}")
+        if not _docker_error_logged:
+            logger.error(f"Error connecting to Docker: {e} (Will suppress further errors until fixed)")
+            _docker_error_logged = True
         return None
 
 def _fetch_single_container_stats(client, container_name):
