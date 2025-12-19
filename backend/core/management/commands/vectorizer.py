@@ -118,7 +118,13 @@ class Vectorizer:
                     AND p.url_image_s3 != ''
                     AND (
                         pe.product_id IS NULL 
-                        OR (pe.embedding_visual IS NULL AND p.updated_at > pe.processed_at)
+                        OR (
+                            pe.embedding_visual IS NULL 
+                            AND p.updated_at > pe.processed_at
+                            -- COOLDOWN: If it failed recently (processed_at is new but embedding is null), 
+                            -- don't retry immediately even if product updated. Wait 15 mins.
+                            AND pe.processed_at < (NOW() - INTERVAL '15 minutes')
+                        )
                     )
                     LIMIT 100;
                 """

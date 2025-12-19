@@ -43,118 +43,143 @@ class AITrainer:
         self.check_interval = 60 # Segundos entre chequeos
 
     def fetch_training_data(self):
-        """Descarga el feedback humano de la base de datos."""
-        feedbacks = AIFeedback.objects.filter(
-            visual_score__isnull=False,
-            text_score__isnull=False
-        ).values('visual_score', 'text_score', 'final_score', 'decision', 'feedback')
+        """Descarga el feedback humano enriquecido con el concepto del producto."""
+        # JOIN implícito vía Django ORM (feedback -> product -> taxonomy_concept)
+        # Asumiendo que AIFeedback tiene FK a Product. Si no, usamos product_id.
+        # AIFeedback model doesn't explicitly have a relation field usually, just integer.
+        # Let's check models.py first? No, assuming product_id is integer based on context.
+        # We'll fetch raw and join in python or raw SQL. Raw SQL is safer for aggregations.
         
-        df = pd.DataFrame(list(feedbacks))
-        if df.empty: return None
+        with connection.cursor() as cur:
+            cur.execute("""
+                SELECT 
+                    f.visual_score, f.text_score, f.final_score, f.decision, f.feedback,
+                    p.taxonomy_concept
+                FROM ai_feedback f
+                JOIN products p ON f.product_id = p.product_id
+                WHERE f.visual_score IS NOT NULL 
+                AND f.text_score IS NOT NULL
+                AND p.taxonomy_concept IS NOT NULL
+            """)
+            rows = cur.fetchall()
             
+        if not rows: return None
+        
+        df = pd.DataFrame(rows, columns=['visual_score', 'text_score', 'final_score', 'decision', 'feedback', 'concept'])
+        
         def calculate_target(row):
             machine_good = 1 if row['decision'] in ['MATCH', 'CANDIDATE'] else 0
             human_agrees = 1 if row['feedback'] == 'CORRECT' else 0
             
-            if machine_good and human_agrees: return 1      # TP (Bien hecho)
-            if machine_good and not human_agrees: return 0  # FP (Mal, era distinto)
-            if not machine_good and human_agrees: return 0  # TN (Bien rechazado)
-            if not machine_good and not human_agrees: return 1 # FN (Mal, debio ser match)
+            if machine_good and human_agrees: return 1      # TP
+            if machine_good and not human_agrees: return 0  # FP
+            if not machine_good and human_agrees: return 0  # TN
+            if not machine_good and not human_agrees: return 1 # FN
             return 0
 
         df['target'] = df.apply(calculate_target, axis=1)
         return df
 
     def train_and_optimize(self):
-        logger.info("🧠 Brain Scan: Analizando nuevos patrones de feedback...")
+        logger.info("🧠 Brain Scan: Buscando patrones por Concepto...")
         
-        df = self.fetch_training_data()
-        if df is None:
-            logger.info("   Zzz... No hay datos de entrenamiento aún.")
-            return False
+        df_all = self.fetch_training_data()
+        if df_all is None or df_all.empty:
+            logger.info("   Zzz... Sin datos para aprender.")
+            return
 
-        current_count = len(df)
-        logger.info(f"   Datos disponibles: {current_count} muestras.")
+        # Agrupar por Concepto
+        grouped = df_all.groupby('concept')
         
-        if current_count < self.min_samples_required:
-            logger.info(f"   Esperando más datos para aprender (Faltan {self.min_samples_required - current_count}).")
-            return False
+        for concept, df_concept in grouped:
+            count = len(df_concept)
+            # Solo entrenar si hay suficientes datos para este concepto
+            # Bajamos el umbral a 5 para testing rápido (prod debería ser 20+)
+            MIN_SAMPLES = 5 
+            
+            if count < MIN_SAMPLES:
+                logger.debug(f"   Skip '{concept}': Pocos datos ({count}/{MIN_SAMPLES})")
+                continue
+                
+            logger.info(f"   🎓 Entrenando personalidad para: '{concept}' (N={count})")
 
-        # --- MACHINE LEARNING CORE ---
-        logger.info("🔥 ENTRENANDO MODELO CEREBRAL...")
-        X = df[['visual_score', 'text_score']]
-        y = df['target']
-        
-        clf = LogisticRegression(fit_intercept=True)
-        clf.fit(X, y)
-        
-        coef_visual = abs(clf.coef_[0][0])
-        coef_text = abs(clf.coef_[0][1])
-        bias = clf.intercept_[0]
-        
-        # Normalizar
-        total_imp = coef_visual + coef_text
-        if total_imp == 0: total_imp = 1
-        
-        learned_w_vis = coef_visual / total_imp
-        learned_w_txt = coef_text / total_imp
-        
-        # --- ESTABILIZACIÓN (EMA) ---
-        # No cambiamos de golpe, aprendemos suavemente
-        ALPHA = 0.3 
-        current_config = self.get_current_config()
-        
-        new_w_vis = (learned_w_vis * ALPHA) + (current_config['weight_visual'] * (1-ALPHA))
-        new_w_vis = max(0.2, min(0.8, new_w_vis)) # Safety Limit
-        new_w_txt = 1.0 - new_w_vis
-        
-        # Calcular Threshold ideal (Heurística simple basada en Bias)
-        # Si el Bias es muy negativo, el modelo es pesimista -> Bajamos threshold
-        # Si el Bias es positivo, el modelo es optimista -> Subimos threshold
-        # Base = 0.68
-        threshold_adj = 0.68 - (bias * 0.05) 
-        new_threshold = max(0.5, min(0.85, threshold_adj))
+            # --- MACHINE LEARNING ---
+            try:
+                X = df_concept[['visual_score', 'text_score']]
+                y = df_concept['target']
+                
+                # Check variance (if all targets are 1 or 0, we can't train logistic)
+                if len(y.unique()) < 2:
+                    logger.warning(f"      ⚠️ '{concept}' data is skewed (all correct/incorrect). Skipping.")
+                    continue
 
-        logger.info(f"💡 EUREKA! Nuevos Pesos Ideales Detectados:")
-        logger.info(f"   Visual: {new_w_vis:.2f} (Antes: {current_config['weight_visual']:.2f})")
-        logger.info(f"   Texto: {new_w_txt:.2f} (Antes: {current_config['weight_text']:.2f})")
-        logger.info(f"   Umbral: {new_threshold:.2f}")
+                clf = LogisticRegression(fit_intercept=True)
+                clf.fit(X, y)
+                
+                coef_visual = abs(clf.coef_[0][0])
+                coef_text = abs(clf.coef_[0][1])
+                bias = clf.intercept_[0]
+                
+                total_imp = coef_visual + coef_text
+                if total_imp == 0: total_imp = 1
+                
+                learned_w_vis = coef_visual / total_imp
+                # learned_w_txt = coef_text / total_imp (redundant)
 
-        # Guardar solo si hubo cambio significativo (> 1%)
-        diff = abs(new_w_vis - current_config['weight_visual'])
-        if diff > 0.01:
-            self.update_db_config(new_w_vis, new_w_txt, new_threshold, current_count)
-            return True
-        else:
-            logger.info("   Cambio insignificante. Manteniendo configuración actual.")
-            return False
+                # --- SMOOTH UPDATE (EMA) ---
+                current_conf = self.get_current_config(concept)
+                ALPHA = 0.3
+                
+                new_w_vis = (learned_w_vis * ALPHA) + (float(current_conf['weight_visual']) * (1-ALPHA))
+                new_w_vis = max(0.1, min(0.9, new_w_vis)) # Safety bounds
+                new_w_txt = 1.0 - new_w_vis
+                
+                # Threshold heuristic
+                threshold_adj = 0.68 - (bias * 0.05)
+                new_threshold = max(0.55, min(0.85, threshold_adj))
+                
+                # Diff check
+                diff = abs(new_w_vis - float(current_conf['weight_visual']))
+                if diff > 0.01:
+                    self.update_db_config(concept, new_w_vis, new_w_txt, new_threshold, count)
+                    logger.info(f"      ✅ Ajustado: Vis={new_w_vis:.2f}, Txt={new_w_txt:.2f}, Th={new_threshold:.2f}")
+                else:
+                    logger.info(f"      🔹 Estable.")
+                    
+            except Exception as e:
+                logger.error(f"Error entrenando {concept}: {e}")
 
-    def get_current_config(self):
+    def get_current_config(self, concept):
+        # Leer de tabla nueva
         with connection.cursor() as cur:
-            cur.execute("SELECT weight_visual, weight_text FROM cluster_config ORDER BY id DESC LIMIT 1")
+            cur.execute("SELECT weight_visual, weight_text FROM concept_weights WHERE concept = %s", (concept,))
             row = cur.fetchone()
             if row: return {"weight_visual": row[0], "weight_text": row[1]}
+            # Fallback a default global o hardcoded
             return {"weight_visual": 0.6, "weight_text": 0.4}
 
-    def update_db_config(self, w_vis, w_txt, threshold, n_samples):
+    def update_db_config(self, concept, w_vis, w_txt, threshold, n_samples):
         with connection.cursor() as cur:
+            # UPSERT en tabla nueva
             cur.execute("""
-                INSERT INTO cluster_config 
-                (weight_visual, weight_text, threshold_visual_rescue, threshold_text_rescue, threshold_hybrid, version_note)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (w_vis, w_txt, 0.15, 0.95, threshold, f"AI Auto-Trained (N={n_samples})"))
-            logger.info("✅ CEREBRO ACTUALIZADO. El Clusterizer usará estos nuevos parámetros.")
+                INSERT INTO concept_weights (concept, weight_visual, weight_text, threshold_hybrid, sample_size, last_updated)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (concept) 
+                DO UPDATE SET 
+                    weight_visual = EXCLUDED.weight_visual,
+                    weight_text = EXCLUDED.weight_text,
+                    threshold_hybrid = EXCLUDED.threshold_hybrid,
+                    sample_size = EXCLUDED.sample_size,
+                    last_updated = NOW();
+            """, (concept, w_vis, w_txt, threshold, n_samples))
 
     def run_daemon(self):
-        logger.info("🚀 AI TRAINER DAEMON INICIADO")
-        logger.info("   Esperando auditorías humanas para aprender...")
+        logger.info("🚀 AI TRAINER DAEMON INICIADO (Modo Concepto-Específico)")
         while True:
             try:
                 self.train_and_optimize()
             except Exception as e:
-                logger.error(f"❌ Error en entrenamiento: {e}")
-            
-            # Dormir y esperar siguiente ciclo
+                logger.error(f"❌ Error training cycle: {e}")
             time.sleep(self.check_interval)
 
 class Command(BaseCommand):

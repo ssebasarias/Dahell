@@ -296,6 +296,8 @@ const SystemStatus = () => {
         { id: 'vectorizer', name: 'AI Vectorizer', icon: Cpu, actions: ['restart'] },
         { id: 'classifier', name: 'Agent 1: Classifier', icon: Server, actions: ['restart'] },
         { id: 'clusterizer', name: 'Agent 2: Clusterizer', icon: Server, actions: ['restart'] },
+        { id: 'market_agent', name: 'Agent 3: Market (MELI)', icon: Activity, actions: ['restart'] },
+        { id: 'amazon_explorer', name: 'Agent 4: Amazon US', icon: Activity, actions: ['restart'] },
         { id: 'ai_trainer', name: 'AI Trainer (Cerebro)', icon: Activity, actions: ['restart'] },
     ];
 
@@ -346,6 +348,8 @@ const SystemStatus = () => {
                     <LogTerminal title="vectorizer" logs={logs} color="#a855f7" />
                     <LogTerminal title="classifier" logs={logs} color="#ec4899" />
                     <LogTerminal title="clusterizer" logs={logs} color="#10b981" />
+                    <LogTerminal title="market_agent" logs={logs} color="#FACC15" />
+                    <LogTerminal title="amazon_explorer" logs={logs} color="#F97316" />
                     <LogTerminal title="ai_trainer" logs={logs} color="#ec4899" />
                 </div>
             </div>

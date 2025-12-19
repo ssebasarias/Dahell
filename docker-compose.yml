@@ -155,12 +155,49 @@ services:
     restart: no
     depends_on:
       - db
-      
     # Opcional: Si usa mucho CPU (LLM), podriamos limitar recursos, 
     # pero confiamos en que Ollama corre fuera o en otro servicio.
     # Si Ollama es local en el host, necesita acceder a host.docker.internal si usas Windows/Mac
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
+
+  market_agent:
+    build:
+      context: .
+      target: vectorizer
+    container_name: dahell_market_agent
+    env_file:
+      - .env.docker
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+    networks:
+      - dahell_net
+    command: python backend/manage.py market_agent
+    profiles: [ "workers" ]
+    restart: no
+    depends_on:
+      - db
+    environment:
+      - MELI_SITE=MCO # Colombia by default
+
+  amazon_explorer:
+    build:
+      context: .
+      target: vectorizer
+    container_name: dahell_amazon_explorer
+    env_file:
+      - .env.docker
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+    networks:
+      - dahell_net
+    command: python backend/manage.py amazon_explorer
+    profiles: [ "workers" ]
+    restart: no
+    depends_on:
+      - db
 
   # 5. Backend API (Django REST Framework)
   backend:

@@ -329,10 +329,16 @@ class ClusterAuditView(APIView):
             # Ordering is defined in Meta class as ['-timestamp']
             logs = ClusterDecisionLog.objects.all()[:limit]
             
+            # --- ACTION: Bulk Fetch Concepts ---
+            p_ids = [log.product_id for log in logs]
+            products = Product.objects.filter(product_id__in=p_ids).only('product_id', 'taxonomy_concept', 'taxonomy_level')
+            concept_map = {p.product_id: {'concept': p.taxonomy_concept, 'level': p.taxonomy_level} for p in products}
+
             data = []
             for log in logs:
+                c_info = concept_map.get(log.product_id, {})
                 data.append({
-                    "timestamp": log.timestamp.timestamp(), # Compatibility with frontend Date parsing
+                    "timestamp": log.timestamp.timestamp(),
                     "product_id": log.product_id,
                     "candidate_id": log.candidate_id,
                     "title_a": log.title_a,
@@ -344,7 +350,10 @@ class ClusterAuditView(APIView):
                     "final_score": log.final_score,
                     "decision": log.decision,
                     "method": log.match_method,
-                    "active_weights": log.active_weights
+                    "active_weights": log.active_weights,
+                    # NEW FIELDS
+                    "concept": c_info.get('concept', 'UNKNOWN'),
+                    "level": c_info.get('level', 'UNKNOWN')
                 })
 
             return Response(data)
@@ -472,6 +481,9 @@ class SystemLogsView(APIView):
             "clusterizer": "clusterizer.log",
             "loader": "loader.log",
             "vectorizer": "vectorizer.log",
+            "classifier": "classifier.log",
+            "market_agent": "market_agent.log", # Assuming default log file logic
+            "amazon_explorer": "amazon_explorer.log", # Logic check needed here
             "ai_trainer": "ai_trainer.log"
         }
         
@@ -564,7 +576,10 @@ class ContainerStatsView(APIView):
             "scraper": "dahell_scraper",
             "loader": "dahell_loader",
             "vectorizer": "dahell_vectorizer",
+            "classifier": "dahell_classifier",
             "clusterizer": "dahell_clusterizer",
+            "market_agent": "dahell_market_agent",
+            "amazon_explorer": "dahell_amazon_explorer",
             "ai_trainer": "dahell_ai_trainer",
             "db": "dahell_db"
         }
@@ -585,7 +600,10 @@ class ContainerControlView(APIView):
             "scraper": "dahell_scraper",
             "loader": "dahell_loader",
             "vectorizer": "dahell_vectorizer",
+            "classifier": "dahell_classifier",
             "clusterizer": "dahell_clusterizer",
+            "market_agent": "dahell_market_agent",
+            "amazon_explorer": "dahell_amazon_explorer",
             "ai_trainer": "dahell_ai_trainer"
         }
         

@@ -20,6 +20,8 @@ CONTAINERS_TO_MONITOR = [
     "dahell_vectorizer", 
     "dahell_classifier",
     "dahell_clusterizer", 
+    "dahell_market_agent",
+    "dahell_amazon_explorer",
     "dahell_ai_trainer",
     "dahell_db"
 ]
@@ -69,10 +71,17 @@ def _fetch_single_container_stats(client, container_name):
                 result["ram_percent"] = round((used_mem / limit) * 100.0, 1)
                 
             except Exception:
-                pass # Fail silently on stats parsing, keep status=running
+                # If stats fail but container is running (e.g. starting up), 
+                # keep status=running/starting but 0 metrics to avoid UI flickering to "error"
+                result["cpu"] = 0
+                result["ram_mb"] = 0
+                result["ram_percent"] = 0
+                # result["status"] is already 'running' from line 49
 
     except Exception as e:
         logger.warning(f"Error monitoring {container_name}: {e}")
+        # If completely failed (e.g. timeout), default to error
+        result["status"] = "error"
     
     return result
 

@@ -33,59 +33,103 @@ class TaxonomistAI:
             format="json" # Forzar modo JSON nativo de Ollama
         )
         
-        # Estructura del Prompt con Few-Shot Learning (Ejemplos)
+        # Estructura del Prompt con Few-Shot Learning (Ejemplos + Contexto Visual)
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """Eres un experto Taxónomo de E-commerce Senior. Tu trabajo es clasificar términos de búsqueda en 3 niveles jerárquicos.
 
             NIVELES:
-            1. INDUSTRY (Industria/Categoría Padre): Términos muy amplios que agrupan miles de productos. No se compran directamente. 
-               Ejemplos: "Tecnología", "Hogar", "Deportes", "Belleza", "Ropa Mujer".
+            1. INDUSTRY (Industria/Categoría Padre): Términos muy amplios.
+               Ejemplos: "Tecnología", "Hogar", "Deportes", "Belleza", "Ropa Mujer", "Herramientas".
+            
+            2. CONCEPT (Concepto/Bucket): Grupos específicos de productos que satisfacen la misma necesidad.
+               Ejemplos: "Audífonos Inalámbricos", "Silla Ergonómica", "Bota Motociclista", "Bota de Lluvia".
+               *NIVEL CRÍTICO: El nombre debe ser canónico y estandarizado.*
 
-            2. CONCEPT (Concepto/Nicho): Grupos de productos específicos que satisfacen una necesidad concreta. Son "comprables" pero genéricos.
-               Ejemplos: "Audífonos Inalámbricos", "Silla Ergonómica", "Labial Mate", "Botas de Lluvia", "Aspiradora Robot".
-               *ESTE ES EL NIVEL MÁS IMPORTANTE.*
+            3. PRODUCT (Producto Específico): Items con marca/modelo.
 
-            3. PRODUCT (Producto Específico): Items con marca, modelo o especificaciones únicas.
-               Ejemplos: "iPhone 15 Pro", "Nike Air Force 1", "Crema Nivea Q10", "Taladro DeWalt 20V".
+            TU MISIÓN - ANÁLISIS CRUZADO:
+            Recibirás:
+            A. El Producto Objetivo (Título + Sus Categorías).
+            B. VECINOS VISUALES (Una lista de productos que se ven iguales). **CADA VECINO TRAE SU TÍTULO Y SUS PROPIAS CATEGORÍAS.**
 
-            Responde SIEMPRE en formato JSON válido que cumpla con este esquema:
+            ESTRATEGIA DE RAZONAMIENTO (Multifactorial):
+            1. Analiza el Título y Categorías del objetivo.
+            2. Observa a los VECINOS:
+               - **Patrones en Títulos:** ¿Qué palabras clave se repiten en los títulos de los vecinos? (Ej: todos dicen "Motocross" o "Gaming").
+               - **Consenso de Categorías:** ¿Qué etiquetas tienen en común?
+            3. SÍNTESIS INTELIGENTE:
+               - Usa los títulos vecinos para extraer el nombre más preciso del objeto.
+               - Usa las categorías para obtener el contexto o industria correcta.
+            
+            Responde SIEMPRE en este JSON:
             {{
                 "term": "termino original",
                 "classification": "NIVEL",
-                "concept_name": "Nombre Estandarizado del Concepto (Singular, Capitalized)",
+                "concept_name": "Nombre Estandarizado (Singular, Capitalized)",
                 "parent_industry": "Industria Madre",
-                "reason": "explicación"
+                "reason": "Explicación breve citando patrones encontrados en Títulos y Categorías vecinas"
             }}
-            
-            Ejemplos:
-            Input: "Lenovo LP40 Pro"
-            Output: {{ "classification": "PRODUCT", "concept_name": "Audífonos Inalámbricos", "parent_industry": "Tecnología", ... }}
-            
-            Input: "Silla Gamer Ergonómica"
-            Output: {{ "classification": "CONCEPT", "concept_name": "Silla Gamer", "parent_industry": "Muebles", ... }}
             """),
-            ("user", "Clasifica el término: '{input}'")
+                "parent_industry": "Industria Madre",
+                "reason": "Explicación breve citando las pistas usadas"
+            }}
+            """),
+            ("user", """
+            ("user", """
+            Clasifica este producto:
+            Título Objetivo: '{input}'
+            Categorías Objetivo: {source_categories}
+            
+            --- VECINOS VISUALES (Evidencia Comparativa) ---
+            {context_visual}
+            """)
         ])
 
         # Chain: Prompt -> LLM -> JSON Parser (implícito en el prompt o via structured_output)
         # Llama 3 suele ser muy bueno respondiendo JSON si se le pide format="json" en el constructor.
         self.chain = self.prompt | self.llm
 
-    def classify(self, term):
+    def classify(self, term, visual_context=None, source_categories=None):
         """
-        Clasifica un término usando Llama 3.
-        Retorna dict: {'classification': '...', 'reason': ...}
+        Clasifica un término usando Llama 3 con contexto enriquecido.
+        visual_context: Lista de DICCIONARIOS (Rich Objects del vecino).
+        source_categories: Lista de strings (categorías del scraper).
         """
         try:
-            # Invocar al modelo
-            response = self.chain.invoke({"input": term})
-            
-            # Parsear contenido (Ollama devuelve string en .content)
+            # Preparar contexto visual (Ahora es una lista de objetos, pasamos a JSON string para la IA)
             import json
-            # A veces el modelo pone texto antes del json, intentamos limpiar
+            ctx_str = "No disponible"
+            if visual_context and len(visual_context) > 0:
+                # Formateamos bonito para que la IA lo lea fácil
+                # Ejemplo: 
+                # 1. "Titulo Vecino" (Cats: [A, B])
+                lines = []
+                for i, v in enumerate(visual_context):
+                    t = v.get('title', 'N/A')
+                    cats = ", ".join(v.get('categories', []))
+                    con = v.get('concept', '')
+                    line = f"- Vecino {i+1}: {t}"
+                    if cats: line += f" | Tags: [{cats}]"
+                    if con: line += f" | Concept: {con}"
+                    lines.append(line)
+                ctx_str = "\n".join(lines)
+            
+            # Preparar contexto categorías propias
+            cats_str = "No disponibles"
+            if source_categories and len(source_categories) > 0:
+                cats_str = ", ".join(source_categories)
+            
+            # Invocar
+            response = self.chain.invoke({
+                "input": term, 
+                "context_visual": ctx_str,
+                "source_categories": cats_str
+            })
+            
+            # Parsear contenido
+            import json
             content = response.content.strip()
             
-            # Buscar el primer '{' y último '}'
             start = content.find('{')
             end = content.rfind('}') + 1
             if start != -1 and end != -1:
@@ -102,8 +146,8 @@ class TaxonomistAI:
 
 # Singleton Helper
 _taxonomist = None
-def classify_term(term):
+def classify_term(term, visual_context=None, source_categories=None):
     global _taxonomist
     if _taxonomist is None:
         _taxonomist = TaxonomistAI()
-    return _taxonomist.classify(term)
+    return _taxonomist.classify(term, visual_context, source_categories)

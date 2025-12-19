@@ -71,8 +71,24 @@ const AuditModal = ({ log, onClose }) => {
                                 {isMatch ? <CheckCircle size={32} color={decisionColor} /> : <XCircle size={32} color={decisionColor} />}
                             </div>
                             <div className="decision-text">
-                                <span className="decision-label">DECISIÓN DE LA IA:</span>
-                                <h2 style={{ color: decisionColor }}>{decisionText}</h2>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
+                                    <span className="decision-label">DECISIÓN DE LA IA:</span>
+                                    {/* NEW: Concept Badge in Modal */}
+                                    <span style={{
+                                        background: 'rgba(99, 102, 241, 0.2)',
+                                        color: '#cbd5e1',
+                                        padding: '2px 8px',
+                                        borderRadius: 4,
+                                        fontSize: '0.7rem',
+                                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4
+                                    }}>
+                                        <Layers size={10} /> {log.concept || 'UNKNOWN'}
+                                    </span>
+                                </div>
+                                <h2 style={{ color: decisionColor, margin: 0 }}>{decisionText}</h2>
                                 <p className="decision-reason">
                                     Motivo: <strong>{log.method}</strong> (Score: {(log.final_score * 100).toFixed(1)}%)
                                 </p>
@@ -508,6 +524,10 @@ const ClusterLab = () => {
                                             <div style={{ flex: 1, overflow: 'hidden' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
                                                     <span style={{ color: '#fff', fontWeight: 500 }}>{log.title_a}</span>
+                                                    {/* Concept Tag in List */}
+                                                    <span style={{ fontSize: '0.65rem', background: '#334155', color: '#94a3b8', padding: '1px 4px', borderRadius: 2 }}>
+                                                        {log.concept || '?'}
+                                                    </span>
                                                     <span style={{ color: '#64748b' }}>vs</span>
                                                 </div>
                                                 <div style={{ color: '#94a3b8', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

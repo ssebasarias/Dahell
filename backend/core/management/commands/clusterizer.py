@@ -36,30 +36,49 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 # ─────── CONFIGURACIÓN DINÁMICA ───────
-def load_config(cur):
-    """Carga los pesos actuales desde la base de datos (Cerebro Dinámico)"""
+# ─────── CONFIGURACIÓN DINÁMICA (CEREBRO POR CONCEPTO) ───────
+def load_config(cur, concept_name="DEFAULT"):
+    """
+    Carga los pesos específicos para un concepto (Personalidad Dinámica).
+    Si no existe personalidad para 'Perfume', usa la 'DEFAULT'.
+    """
     config = {
         "weight_visual": 0.6,
         "weight_text": 0.4,
-        "threshold_visual_rescue": 0.15,
+        "threshold_visual_rescue": 0.92, # Hardcoded defaults baselines
         "threshold_text_rescue": 0.95,
         "threshold_hybrid": 0.68
     }
     try:
+        # Intentar cargar config específica para el concepto
         cur.execute("""
-            SELECT weight_visual, weight_text, threshold_visual_rescue, 
-                   threshold_text_rescue, threshold_hybrid
-            FROM cluster_config ORDER BY id DESC LIMIT 1
-        """)
+            SELECT weight_visual, weight_text, threshold_hybrid
+            FROM concept_weights 
+            WHERE concept = %s
+        """, (concept_name,))
         row = cur.fetchone()
+        
+        # Si no hay, cargar DEFAULT
+        if not row:
+            cur.execute("""
+                SELECT weight_visual, weight_text, threshold_hybrid
+                FROM concept_weights 
+                WHERE concept = 'DEFAULT'
+            """)
+            row = cur.fetchone()
+            
         if row:
             config["weight_visual"] = float(row[0])
             config["weight_text"] = float(row[1])
-            config["threshold_visual_rescue"] = float(row[2])
-            config["threshold_text_rescue"] = float(row[3])
-            config["threshold_hybrid"] = float(row[4])
+            config["threshold_hybrid"] = float(row[2])
+            
+            # Ajuste dinámico de umbrales de rescate basado en pesos
+            # Si el texto es muy importante (w_text > 0.7), relajamos el visual rescue?
+            # Por seguridad, mantenemos los rescues visuales muy altos (0.92) siempre.
+            
     except Exception as e:
-        logger.error(f"⚠️ Error cargando config dinámica: {e}. Usando defaults.")
+        logger.error(f"⚠️ Error cargando config dinámica para {concept_name}: {e}. Usando defaults.")
+    
     return config
 
 # ─────── HELPERS ───────
@@ -161,8 +180,8 @@ def update_cluster_metrics(cur):
 def run_hybrid_clustering(conn):
     cur = conn.cursor()
     
-    # 1. Cargar Configuración Dinámica
-    CONFIG = load_config(cur)
+    # 1. Configuración cargada bajo demanda por producto
+    # CONFIG = load_config(cur) # <-- REMOVED GLOBAL LOAD
     
     # 2. Obtener productos SIN cluster pero CON vector y CON concepto (Agent 1 Ready)
     # limitamos a 50 por ciclo para no bloquear
@@ -191,6 +210,9 @@ def run_hybrid_clustering(conn):
 
     for row in targets:
         pid, title, price, vector, img_a, concept = row
+        
+        # 1.5 Cargar Personalidad Dinámica para este concepto
+        CONFIG = load_config(cur, concept_name=concept)
         
         # 3. Buscar Candidatos (Vector Search RESTRINGIDO al Bucket)
         # Solo buscamos items que sean del mismo concepto taxonómico
