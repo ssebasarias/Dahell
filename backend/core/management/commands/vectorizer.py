@@ -1,4 +1,4 @@
-v"""
+"""
 Módulo de Vectorización (Django Command).
 """
 

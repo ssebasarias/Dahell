@@ -2,59 +2,23 @@ import React, { useEffect, useState } from 'react';
 import {
     ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis, ReferenceLine
 } from 'recharts';
-import { TrendingUp, Activity, ArrowRight, DollarSign, Target, Award, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { fetchDashboardStats } from '../services/api';
-import { useNavigate } from 'react-router-dom';
 import './Dashboard.css';
 
-import LazyImage from '../components/common/LazyImage';
+import GlassCard from '../components/common/GlassCard';
+import OpportunityCard from '../components/domain/market/OpportunityCard';
 
-const OpportunityCard = ({ product }) => {
-    const navigate = useNavigate();
-
-    return (
-        <div className="glass-card tactical-card" onClick={() => window.open(`https://app.dropi.co/products/${product.id}`, '_blank')}>
-            <div className="card-badge">{product.badge}</div>
-            <div className="img-container">
-                <LazyImage
-                    src={product.image}
-                    alt={product.title}
-                    style={{ width: '100%', height: '100%' }}
-                />
-                <div className="overlay">
-                    <button className="btn-primary">Ver en Dropi <ArrowRight size={14} /></button>
-                </div>
-            </div>
-            <div className="card-content">
-                <h4 title={product.title}>{product.title}</h4>
-                <div className="metrics">
-                    <div className="metric">
-                        <span className="label">Precio</span>
-                        <span className="value">${parseInt(product.price).toLocaleString()}</span>
-                    </div>
-                    <div className="metric highlight">
-                        <span className="label">Margen</span>
-                        <span className="value">+{parseInt(product.margin)}%</span>
-                    </div>
-                </div>
-                <div className="competitors-tag">
-                    <Target size={12} />
-                    <span>{product.competitors} {product.competitors === 1 ? 'Rival' : 'Rivales'}</span>
-                </div>
-            </div>
-        </div>
-    );
-};
 const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
         const data = payload[0].payload;
         return (
-            <div className="custom-tooltip glass-panel" style={{ padding: '0.8rem', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.9)' }}>
+            <div className="custom-tooltip glass-panel" style={{ padding: '0.8rem', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.9)', borderRadius: 8 }}>
                 <p style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>{data.category}</p>
                 <div style={{ fontSize: '0.8rem', color: '#ccc' }}>
                     <p>Volumen: {data.volume} productos</p>
                     <p>Margen Avg: {data.avg_margin}%</p>
-                    <p>Competencia: {data.competitiveness} (Saturación)</p>
+                    <p>Competencia: {data.competitiveness}</p>
                 </div>
             </div>
         );
@@ -81,41 +45,42 @@ const Dashboard = () => {
     }, []);
 
     if (loading) return (
-        <div className="dashboard-loading">
-            <Activity className="spin-icon" size={48} color="#6366f1" />
-            <p>Sincronizando Inteligencia de Mercado...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', color: '#6366f1' }}>
+            <Zap className="spin" size={48} />
+            <p style={{ marginTop: '1rem' }}>Sincronizando Inteligencia de Mercado...</p>
+            <style jsx>{` .spin { animation: spin 1s infinite linear; } @keyframes spin { 100% { transform: rotate(360deg); } } `}</style>
         </div>
     );
 
-    if (!data) return <div style={{ padding: '2rem' }}>Error de conexión con Neural Core.</div>;
+    if (!data) return <div style={{ padding: '2rem', color: '#fff' }}>Error de conexión con Neural Core.</div>;
 
     const { tactical_feed = [], market_radar = [] } = data;
 
     return (
-        <div className="dashboard-container">
+        <div className="dashboard-container" style={{ maxWidth: '1600px', margin: '0 auto', padding: '2rem' }}>
             {/* Header */}
-            <div className="dashboard-header">
+            <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', marginBottom: '2rem' }}>
                 <div>
-                    <h1 className="text-gradient">Centro de Comando</h1>
-                    <p className="subtitle">Resumen Estratégico & Oportunidades Diarias</p>
+                    <h1 className="text-gradient" style={{ fontSize: '2.5rem', margin: 0 }}>Centro de Comando</h1>
+                    <p className="subtitle" style={{ color: '#94a3b8', margin: '0.5rem 0 0 0' }}>Resumen Estratégico & Oportunidades Diarias</p>
                 </div>
-                <div className="date-badge">
+                <div style={{ background: 'rgba(255,255,255,0.1)', padding: '0.5rem 1rem', borderRadius: '20px', fontSize: '0.9rem', color: '#e2e8f0' }}>
                     <span>{new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
                 </div>
             </div>
 
             {/* SECTION 1: TACTICAL FEED */}
-            <section className="section-feed">
-                <div className="section-title">
+            <section style={{ marginBottom: '2rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', color: '#fff' }}>
                     <Zap size={20} color="#f59e0b" fill="#f59e0b" />
-                    <h3>Hallazgos Flash (24h)</h3>
-                    <span className="chip">Top Oportunidades</span>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Hallazgos Flash (24h)</h3>
+                    <span style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', padding: '2px 8px', borderRadius: '99px', fontSize: '0.7rem', fontWeight: 'bold', border: '1px solid rgba(245, 158, 11, 0.3)' }}>Top Oportunidades</span>
                 </div>
 
                 {tactical_feed.length === 0 ? (
-                    <div className="empty-state glass-panel">
-                        <p>El escaneo de hoy no ha encontrado "Unicornios" todavía. Revisa Gold Mine.</p>
-                    </div>
+                    <GlassCard>
+                        <p style={{ color: '#94a3b8' }}>El escaneo de hoy no ha encontrado "Unicornios" todavía. Revisa Gold Mine.</p>
+                    </GlassCard>
                 ) : (
                     <div className="cards-grid">
                         {tactical_feed.map(item => (
@@ -129,10 +94,10 @@ const Dashboard = () => {
             <div className="strategy-grid">
 
                 {/* RADAR CHART */}
-                <div className="glass-card chart-panel">
-                    <div className="panel-header">
-                        <h3>Radar de Categorías</h3>
-                        <p>Eje X: Saturación (Competencia) vs Eje Y: Rentabilidad (Margen)</p>
+                <GlassCard className="chart-panel">
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <h3 style={{ fontSize: '1.1rem', color: '#fff', margin: '0 0 0.25rem 0' }}>Radar de Categorías</h3>
+                        <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0 }}>Eje X: Saturación (Competencia) vs Eje Y: Rentabilidad (Margen)</p>
                     </div>
                     <div style={{ width: '100%', height: 350 }}>
                         <ResponsiveContainer>
@@ -164,15 +129,15 @@ const Dashboard = () => {
                             </ScatterChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </GlassCard>
 
                 {/* TOP MOVERS LIST */}
-                <div className="glass-card list-panel">
-                    <div className="panel-header">
-                        <h3>Top Categorías</h3>
-                        <p>Ranking por Margen Promedio</p>
+                <GlassCard className="list-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <h3 style={{ fontSize: '1.1rem', color: '#fff', margin: '0 0 0.25rem 0' }}>Top Categorías</h3>
+                        <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0 }}>Ranking por Margen Promedio</p>
                     </div>
-                    <div className="category-list custom-scrollbar">
+                    <div className="category-list custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
                         {market_radar.map((cat, idx) => (
                             <div key={idx} className="cat-row">
                                 <div className="rank">#{idx + 1}</div>
@@ -189,72 +154,18 @@ const Dashboard = () => {
                             </div>
                         ))}
                     </div>
-                </div>
+                </GlassCard>
             </div>
 
-            <style>{`
-                .section-feed { margin-bottom: 2rem; }
-                .section-title { display: flex; align-items: center; gap: 0.75rem; marginBottom: 1rem; color: #fff; }
-                .section-title h3 { font-size: 1.25rem; font-weight: 600; }
-                .chip { background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: bold; border: 1px solid rgba(245, 158, 11, 0.3); }
-
+            <style jsx>{`
                 .cards-grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
                     gap: 1.5rem;
                 }
-
-                .tactical-card {
-                    padding: 0;
-                    overflow: hidden;
-                    transition: transform 0.2s, box-shadow 0.2s;
-                    cursor: pointer;
-                    position: relative;
-                }
-                .tactical-card:hover { transform: translateY(-4px); box-shadow: 0 10px 20px rgba(0,0,0,0.3); border-color: rgba(99, 102, 241, 0.5); }
-                
-                .card-badge {
-                    position: absolute; top: 10px; left: 10px; z-index: 2;
-                    background: #10b981; color: white; padding: 2px 8px; border-radius: 4px;
-                    font-size: 0.7rem; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                }
-
-                .img-container {
-                    height: 180px; width: 100%; position: relative; background: #000;
-                }
-                .img-container img { width: 100%; height: 100%; object-fit: contain; }
-                .overlay {
-                    position: absolute; inset: 0; background: rgba(0,0,0,0.4);
-                    display: flex; align-items: center; justify-content: center;
-                    opacity: 0; transition: opacity 0.2s;
-                }
-                .tactical-card:hover .overlay { opacity: 1; }
-
-                .card-content { padding: 1rem; }
-                .card-content h4 { font-size: 0.95rem; margin-bottom: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
-                
-                .metrics { display: flex; justify-content: space-between; margin-bottom: 0.75rem; }
-                .metric { display: flex; flexDirection: column; }
-                .metric.highlight .value { color: #10b981; }
-                .metric .label { font-size: 0.7rem; color: #64748b; }
-                .metric .value { font-weight: bold; font-size: 0.9rem; }
-
-                .competitors-tag { 
-                    display: flex; alignItems: center; gap: 4px; font-size: 0.75rem; color: #94a3b8; 
-                    background: rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 4px; width: fit-content;
-                }
-
                 .strategy-grid {
                     display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;
                 }
-                .panel-header { margin-bottom: 1.5rem; }
-                .panel-header h3 { font-size: 1.1rem; color: #fff; margin-bottom: 0.25rem; }
-                .panel-header p { font-size: 0.8rem; color: #64748b; }
-
-                .chart-panel { padding: 1.5rem; }
-                .list-panel { padding: 1.5rem; height: 100%; max-height: 450px; display: flex; flexDirection: column; }
-
-                .category-list { flex: 1; overflow-y: auto; padding-right: 0.5rem; }
                 .cat-row {
                     display: flex; alignItems: center; gap: 1rem; padding: 0.75rem 0;
                     border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -271,6 +182,11 @@ const Dashboard = () => {
 
                 @media (max-width: 1024px) {
                     .strategy-grid { grid-template-columns: 1fr; }
+                }
+                .text-gradient {
+                    background: linear-gradient(to right, #fff, #94a3b8);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
                 }
             `}</style>
         </div>

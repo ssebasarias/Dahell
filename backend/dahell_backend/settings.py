@@ -14,7 +14,14 @@ env = environ.Env()
 # BASE_DIR is .../backend/
 BASE_DIR = Path(__file__).resolve().parent.parent
 # .env is in .../Dahell/.env (one level up from backend)
-environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
+environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env')) # On Windows this can fail if encoding is not default utf-8, but auto-detection usually works.
+# Explicitly ignoring errors for robustness or adding encoding if supported by version. 
+# Re-writing standard read_env to force utf-8 if using modern django-environ, or manual open.
+try:
+    with open(os.path.join(BASE_DIR.parent, '.env'), encoding='utf-8') as f:
+        environ.Env.read_env(f)
+except Exception:
+    environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
 
 # Quick-start development settings - unsuitable for production
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-wwjbiw8bz)!cc3ec&dq2fqe486=3go)za3+l_bq-n^!ttvbfj(')

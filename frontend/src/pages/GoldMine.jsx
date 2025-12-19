@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchGoldMine, fetchGoldMineStats, searchVisualGoldMine, fetchCategories } from '../services/api';
-import { ShoppingBag, Users, Search, Filter, Camera, X } from 'lucide-react';
+import { ShoppingBag, Search, Filter, Camera, X } from 'lucide-react';
 import LazyImage from '../components/common/LazyImage';
+import GlassCard from '../components/common/GlassCard';
+import Pagination from '../components/common/Pagination';
+import CompetitorBadge from '../components/common/CompetitorBadge';
 import './Dashboard.css';
 
 const GoldMine = () => {
@@ -57,9 +60,7 @@ const GoldMine = () => {
             setOpportunities(newData);
             setCurrentPage(page);
 
-            // Stats are now fetched globally in a separate effect
-
-
+            // Estimation of total results if backend doesn't provide it clearly
             if (newData.length < ITEMS_PER_PAGE) {
                 setTotalResults(offset + newData.length);
             } else {
@@ -136,34 +137,6 @@ const GoldMine = () => {
         loadData(1);
     };
 
-    const totalPages = Math.ceil(totalResults / ITEMS_PER_PAGE);
-
-    const getPageNumbers = () => {
-        const pages = [];
-        const maxVisible = 7;
-
-        if (totalPages <= maxVisible) {
-            for (let i = 1; i <= totalPages; i++) pages.push(i);
-        } else {
-            if (currentPage <= 4) {
-                for (let i = 1; i <= 5; i++) pages.push(i);
-                pages.push('...');
-                pages.push(totalPages);
-            } else if (currentPage >= totalPages - 3) {
-                pages.push(1);
-                pages.push('...');
-                for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
-            } else {
-                pages.push(1);
-                pages.push('...');
-                for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
-                pages.push('...');
-                pages.push(totalPages);
-            }
-        }
-        return pages;
-    };
-
     return (
         <div className="dashboard-container">
             <div className="header-greeting">
@@ -171,7 +144,7 @@ const GoldMine = () => {
                 <p>Encuentra productos rentables. {isVisualMode ? "Modo: Búsqueda Visual por IA" : "Filtra, analiza y ataca."}</p>
             </div>
 
-            <div className="glass-card" style={{ display: 'flex', gap: '1rem', padding: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <GlassCard style={{ display: 'flex', gap: '1rem', padding: '1rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
                 <div style={{ marginRight: '1rem' }}>
                     <input type="file" id="visual-upload" style={{ display: 'none' }} accept="image/*" onChange={handleImageUpload} />
                     {!isVisualMode ? (
@@ -210,70 +183,28 @@ const GoldMine = () => {
                     </div>
 
                 </div>
-            </div>
+            </GlassCard>
 
-            {/* Interactive Competitor Distribution Bar (Replacing the old Select) */}
+            {/* Interactive Competitor Distribution Bar */}
             {!loading && !isVisualMode && Object.keys(competitorStats).length > 0 && (
-                <div className="glass-panel" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+                <GlassCard style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
                     <div className="custom-scrollbar" style={{
-                        display: 'flex',
-                        overflowX: 'auto',
-                        gap: '1.5rem',
-                        alignItems: 'center',
-                        paddingBottom: '0.75rem' // Espacio para la scrollbar
+                        display: 'flex', overflowX: 'auto', gap: '1.5rem', alignItems: 'center', paddingBottom: '0.75rem'
                     }}>
-                        <style>
-                            {`
-                                .custom-scrollbar::-webkit-scrollbar {
-                                    height: 6px;
-                                }
-                                .custom-scrollbar::-webkit-scrollbar-track {
-                                    background: rgba(255, 255, 255, 0.02);
-                                    border-radius: 10px;
-                                }
-                                .custom-scrollbar::-webkit-scrollbar-thumb {
-                                    background: rgba(255, 255, 255, 0.15);
-                                    border-radius: 10px;
-                                }
-                                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                                    background: rgba(255, 255, 255, 0.25);
-                                }
-                            `}
-                        </style>
-
                         {/* Option: ALL */}
                         <div
                             onClick={() => {
                                 setSelectedCompetitor(null);
                                 setCompetitorRange('0-1000');
                             }}
-                            style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                cursor: 'pointer',
-                                opacity: selectedCompetitor === null ? 1 : 0.6,
-                                borderBottom: selectedCompetitor === null ? '2px solid #6366f1' : '2px solid transparent',
-                                paddingBottom: '0.5rem',
-                                transition: 'all 0.2s',
-                                minWidth: '70px'
-                            }}
+                            className={`competitor-filter-item ${selectedCompetitor === null ? 'selected' : ''}`}
                         >
-                            <div style={{
-                                width: '36px',
-                                height: '36px',
-                                borderRadius: '50%',
-                                background: selectedCompetitor === null ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.03)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}>
+                            <div className="filter-icon-wrapper" style={{ borderColor: selectedCompetitor === null ? '#6366f1' : 'transparent' }}>
                                 <Users size={18} color={selectedCompetitor === null ? '#6366f1' : '#94a3b8'} />
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
-                                <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.85rem' }}>Todos</span>
-                                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{totalResults}</span>
+                            <div className="filter-text">
+                                <span className="title">Todos</span>
+                                <span className="subtitle">{totalResults}</span>
                             </div>
                         </div>
 
@@ -286,12 +217,7 @@ const GoldMine = () => {
                             .map(([competitors, count]) => {
                                 const compNum = Number(competitors);
                                 const isSelected = selectedCompetitor === compNum;
-
-                                let iconColor = '#10b981'; // Green (Low)
-                                if (compNum > 2) iconColor = '#f59e0b'; // Medium
-                                if (compNum > 5) iconColor = '#ef4444'; // High
-
-                                let glowColor = `rgba(${compNum > 5 ? '239, 68, 68' : (compNum > 2 ? '245, 158, 11' : '16, 185, 129')}, 0.15)`;
+                                let iconColor = compNum > 5 ? '#ef4444' : (compNum > 2 ? '#f59e0b' : '#10b981');
 
                                 return (
                                     <div
@@ -300,55 +226,26 @@ const GoldMine = () => {
                                             setSelectedCompetitor(compNum);
                                             setCompetitorRange(`${compNum}-${compNum}`);
                                         }}
-                                        style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            gap: '0.25rem',
-                                            cursor: 'pointer',
-                                            minWidth: '70px',
-                                            paddingBottom: '0.5rem',
-                                            borderBottom: isSelected ? `2px solid ${iconColor}` : '2px solid transparent',
-                                            opacity: (selectedCompetitor !== null && !isSelected) ? 0.4 : 1,
-                                            transform: isSelected ? 'scale(1.05)' : 'scale(1)',
-                                            transition: 'all 0.2s'
-                                        }}
+                                        className={`competitor-filter-item ${isSelected ? 'selected' : ''}`}
                                     >
-                                        <div style={{
-                                            width: '36px',
-                                            height: '36px',
-                                            borderRadius: '50%',
-                                            background: isSelected ? glowColor : 'rgba(255,255,255,0.03)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            boxShadow: isSelected ? `0 0 10px ${glowColor}` : 'none'
+                                        <div className="filter-icon-wrapper" style={{
+                                            background: isSelected ? `rgba(${compNum > 5 ? '239, 68, 68' : (compNum > 2 ? '245, 158, 11' : '16, 185, 129')}, 0.15)` : 'rgba(255,255,255,0.03)',
+                                            boxShadow: isSelected ? `0 0 10px ${iconColor}40` : 'none'
                                         }}>
                                             <Users size={18} color={iconColor} />
                                         </div>
-
-                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
-                                            <span style={{
-                                                color: iconColor,
-                                                fontSize: '0.85rem',
-                                                fontWeight: '600',
-                                                textShadow: isSelected ? `0 0 8px ${iconColor}` : 'none'
-                                            }}>
-                                                {compNum} Comp.
-                                            </span>
-                                            <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
-                                                {count}
-                                            </span>
+                                        <div className="filter-text">
+                                            <span className="title" style={{ color: iconColor }}>{compNum} Comp.</span>
+                                            <span className="subtitle">{count}</span>
                                         </div>
                                     </div>
                                 );
                             })}
                     </div>
-                </div>
+                </GlassCard>
             )}
 
-
-            <div className="glass-card">
+            <GlassCard padding="0">
                 {!loading && opportunities.length > 0 && (
                     <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', fontSize: '0.9rem' }}>
                         Mostrando {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, totalResults)} de {totalResults}+ resultados
@@ -399,10 +296,7 @@ const GoldMine = () => {
                                     </td>
                                     <td style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>{op.supplier}</td>
                                     <td>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <UsersIcon count={op.competitors} />
-                                            <span>{op.competitors}</span>
-                                        </div>
+                                        <CompetitorBadge count={op.competitors} />
                                     </td>
                                     <td>
                                         <span style={{ color: op.saturation === 'ALTA' ? '#ef4444' : (op.saturation === 'MEDIA' ? '#f59e0b' : '#10b981'), fontWeight: 500 }}>
@@ -432,37 +326,38 @@ const GoldMine = () => {
                     </div>
                 )}
 
-                {!loading && !isVisualMode && opportunities.length > 0 && totalPages > 1 && (
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                        <button onClick={() => loadData(currentPage - 1)} disabled={currentPage === 1} className="btn-secondary" style={{ padding: '0.5rem 1rem', opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}>
-                            ← Anterior
-                        </button>
-
-                        {getPageNumbers().map((page, idx) => (
-                            page === '...' ? (
-                                <span key={`ellipsis-${idx}`} style={{ color: '#64748b', padding: '0 0.5rem' }}>...</span>
-                            ) : (
-                                <button key={page} onClick={() => loadData(page)} className="btn-secondary" style={{ padding: '0.5rem 0.75rem', minWidth: '40px', background: currentPage === page ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.05)', border: currentPage === page ? '1px solid #667eea' : '1px solid var(--glass-border)', fontWeight: currentPage === page ? 'bold' : 'normal' }}>
-                                    {page}
-                                </button>
-                            )
-                        ))}
-
-                        <button onClick={() => loadData(currentPage + 1)} disabled={currentPage === totalPages} className="btn-secondary" style={{ padding: '0.5rem 1rem', opacity: currentPage === totalPages ? 0.5 : 1, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}>
-                            Siguiente →
-                        </button>
-                    </div>
+                {!loading && !isVisualMode && opportunities.length > 0 && (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalResults={totalResults}
+                        itemsPerPage={ITEMS_PER_PAGE}
+                        onPageChange={loadData}
+                    />
                 )}
-            </div>
+            </GlassCard>
+
+            <style jsx>{`
+                .competitor-filter-item {
+                    display: flex; flexDirection: column; alignItems: center; gap: 0.25rem;
+                    cursor: pointer; opacity: 0.6; padding-bottom: 0.5rem;
+                    transition: all 0.2s; min-width: 70px; border-bottom: 2px solid transparent;
+                }
+                .competitor-filter-item.selected {
+                    opacity: 1; transform: scale(1.05);
+                }
+                
+                .filter-icon-wrapper {
+                    width: 36px; height: 36px; border-radius: 50%;
+                    display: flex; alignItems: center; justifyContent: center;
+                    border: 2px solid transparent;
+                }
+
+                .filter-text { display: flex; flexDirection: column; alignItems: center; line-height: 1.1; }
+                .title { font-weight: 600; color: #fff; font-size: 0.85rem; }
+                .subtitle { font-size: 0.7rem; color: #64748b; }
+            `}</style>
         </div >
     );
-};
-
-const UsersIcon = ({ count }) => {
-    let color = '#10b981';
-    if (count > 2) color = '#f59e0b';
-    if (count > 5) color = '#ef4444';
-    return <Users size={16} color={color} />;
 };
 
 export default GoldMine;

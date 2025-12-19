@@ -1,0 +1,5 @@
+services:
+  backend:
+    volumes:
+      - ./backend:/app/backend
+      - ./raw_data:/app/raw_data

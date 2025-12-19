@@ -18,6 +18,7 @@ SQLAlchemy
 numpy
 pandas
 pillow
+psutil
 
 # --- Machine Learning / AI ---
 torch

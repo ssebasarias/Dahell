@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Avg, Count, Q
@@ -11,13 +11,13 @@ from .docker_utils import get_container_stats, control_container
 class DashboardStatsView(APIView):
     def get(self, request):
         """
-        Centro de Comando Estratégico (V2).
-        Retorna inteligencia real del mercado y oportunidades tácticas, 
+        Centro de Comando EstratÃ©gico (V2).
+        Retorna inteligencia real del mercado y oportunidades tÃ¡cticas, 
         ya no solo estado del servidor.
         """
         
         # ---------------------------------------------------------
-        # 1. FLASH OPPORTUNITIES (Los mejores hallazgos de las últimas 48h)
+        # 1. FLASH OPPORTUNITIES (Los mejores hallazgos de las Ãºltimas 48h)
         # ---------------------------------------------------------
         # Buscamos productos recientes que prometen alto margen y baja competencia.
         # Estrategia: Productos recientes -> Ordenados por Margen -> Que NO tengan muchos competidores.
@@ -35,18 +35,18 @@ class DashboardStatsView(APIView):
         # 1. Extraer los IDs de los productos obtenidos
         p_ids = [p.product_id for p in flash_ops]
         
-        # 2. Traer todas las membresías relevantes de una sola vez
+        # 2. Traer todas las membresÃ­as relevantes de una sola vez
         memberships = ProductClusterMembership.objects.filter(
             product_id__in=p_ids
         ).select_related('cluster')
         
-        # 3. Crear un diccionario para acceso instantáneo O(1)
+        # 3. Crear un diccionario para acceso instantÃ¡neo O(1)
         # Map: product_id -> cluster_obj
         cluster_map = {m.product_id: m.cluster for m in memberships}
 
         tactical_feed = []
         for p in flash_ops:
-            # Ahora la búsqueda es en memoria (Instantánea)
+            # Ahora la bÃºsqueda es en memoria (InstantÃ¡nea)
             cluster = cluster_map.get(p.product_id)
             
             competitors = 1
@@ -68,9 +68,9 @@ class DashboardStatsView(APIView):
                 if len(tactical_feed) >= 5: break # Solo queremos los Top 5 para el UI
 
         # ---------------------------------------------------------
-        # 2. MARKET RADAR (Inteligencia por Categoría)
+        # 2. MARKET RADAR (Inteligencia por CategorÃ­a)
         # ---------------------------------------------------------
-        # OPTIMIZACION: Query única con Agregaciones (Elimina N+1 Problems)
+        # OPTIMIZACION: Query Ãºnica con Agregaciones (Elimina N+1 Problems)
         # Calculamos conteo, precio promedio, margen promedio y competencia promedio en una sola consulta.
         
         radar_qs = Category.objects.filter(
@@ -79,11 +79,11 @@ class DashboardStatsView(APIView):
             product_count=Count('productcategory__product', distinct=True),
             avg_price=Avg('productcategory__product__sale_price'),
             avg_margin=Avg('productcategory__product__profit_margin'),
-            # Competencia: Promedio de competidores de los clusters asociados a los productos de la categoría
+            # Competencia: Promedio de competidores de los clusters asociados a los productos de la categorÃ­a
             avg_competitiveness=Avg('productcategory__product__cluster_membership__cluster__total_competitors')
         ).filter(
-            product_count__gte=5 # Solo categorías relevantes
-        ).order_by('-avg_margin') # Priorizar las más rentables
+            product_count__gte=5 # Solo categorÃ­as relevantes
+        ).order_by('-avg_margin') # Priorizar las mÃ¡s rentables
 
         radar_data = []
         
@@ -103,7 +103,7 @@ class DashboardStatsView(APIView):
 
         return Response({
             "tactical_feed": tactical_feed,
-            "market_radar": radar_data[:15] # Top 15 categorías para no saturar el gráfico
+            "market_radar": radar_data[:15] # Top 15 categorÃ­as para no saturar el grÃ¡fico
         })
 
 from django.db import connection
@@ -111,7 +111,7 @@ from .ai_utils import get_image_embedding
 
 class GoldMineView(APIView):
     def post(self, request):
-        """Búsqueda Visual (Reverse Image Search)"""
+        """BÃºsqueda Visual (Reverse Image Search)"""
         if 'image' not in request.FILES:
             return Response({"error": "No image provided"}, status=400)
             
@@ -142,12 +142,12 @@ class GoldMineView(APIView):
             similar_pids = [r[0] for r in rows]
 
         # 3. Recuperar detalles de clusters para esos productos
-        # Queremos saber a qué cluster pertenecen esos productos similares
+        # Queremos saber a quÃ© cluster pertenecen esos productos similares
         # y devolver el cluster entero o el representante
         results = []
         if similar_pids:
             # Traer info de clusters donde esos productos son miembros o representantes
-            # Simplificación: Devolvemos los productos directos encontrados, enriquecidos con su cluster info
+            # SimplificaciÃ³n: Devolvemos los productos directos encontrados, enriquecidos con su cluster info
             products = Product.objects.filter(product_id__in=similar_pids).select_related('supplier')
             
             # --- OPTIMIZACION N+1 ---
@@ -160,7 +160,7 @@ class GoldMineView(APIView):
             dist_map = {r[0]: r[1] for r in rows}
             
             for p in products:
-                # Búsqueda en memoria O(1)
+                # BÃºsqueda en memoria O(1)
                 cluster_info = cluster_map.get(p.product_id)
                 
                 results.append({
@@ -181,7 +181,7 @@ class GoldMineView(APIView):
         return Response(results)
 
     def get(self, request):
-        """Búsqueda Textual y Filtros"""
+        """BÃºsqueda Textual y Filtros"""
         try:
             min_comp = int(request.query_params.get('min_comp', 0))
             max_comp = int(request.query_params.get('max_comp', 50)) 
@@ -196,13 +196,13 @@ class GoldMineView(APIView):
         # 2. Construir Query
         filters = Q(total_competitors__gte=min_comp) & Q(total_competitors__lte=max_comp)
         
-        # Filtro opcional de precio si lo envían
+        # Filtro opcional de precio si lo envÃ­an
         min_price = request.query_params.get('min_price')
         max_price = request.query_params.get('max_price')
         
         # Debug logging
         if min_price or max_price:
-            print(f"💰 Price filters - Min: {min_price}, Max: {max_price}")
+            print(f"ðŸ’° Price filters - Min: {min_price}, Max: {max_price}")
         
         if min_price: 
             filters &= Q(average_price__gte=min_price)
@@ -212,7 +212,7 @@ class GoldMineView(APIView):
         if search_query:
             filters &= Q(representative_product__title__icontains=search_query)
             
-        # Filtro de Categoría
+        # Filtro de CategorÃ­a
         if category_filter and category_filter != 'all':
             filters &= Q(representative_product__productcategory__category__id=category_filter)
 
@@ -248,10 +248,10 @@ class GoldMineView(APIView):
 
 class GoldMineStatsView(APIView):
     def get(self, request):
-        """Retorna estadísticas globales de distribución de competidores"""
+        """Retorna estadÃ­sticas globales de distribuciÃ³n de competidores"""
         
         # Filtros Base (Search, Category, Price)
-        # NOTA: NO filtramos por min_comp/max_comp aquí, para mostrar el panorama completo
+        # NOTA: NO filtramos por min_comp/max_comp aquÃ­, para mostrar el panorama completo
         search_query = request.query_params.get('q', '')
         category_filter = request.query_params.get('category', None)
         min_price = request.query_params.get('min_price')
@@ -265,7 +265,7 @@ class GoldMineStatsView(APIView):
         if category_filter and category_filter != 'all':
             filters &= Q(representative_product__productcategory__category__id=category_filter)
 
-        # Agregación: Contar cuantos clusters tienen X competidores
+        # AgregaciÃ³n: Contar cuantos clusters tienen X competidores
         # SELECT total_competitors, COUNT(*) as count FROM unique_product_clusters WHERE filters GROUP BY total_competitors
         stats = UniqueProductCluster.objects.filter(filters)\
             .values('total_competitors')\
@@ -281,11 +281,11 @@ from django.utils import timezone
 
 class ClusterLabStatsView(APIView):
     """
-    Métricas para el Sidebar del Cluster Lab (XP y Progreso).
+    MÃ©tricas para el Sidebar del Cluster Lab (XP y Progreso).
     """
     def get(self, request):
         try:
-            # 1. Total Auditorías Realizadas (XP del Usuario)
+            # 1. Total AuditorÃ­as Realizadas (XP del Usuario)
             total_feedback = AIFeedback.objects.count()
             
             # --- XP DIARIA ---
@@ -296,12 +296,12 @@ class ClusterLabStatsView(APIView):
             # 2. Total Decisiones IA Registradas
             total_logs = ClusterDecisionLog.objects.count()
 
-            # 3. Precisión Humana (Correcciones vs Confirmaciones)
+            # 3. PrecisiÃ³n Humana (Correcciones vs Confirmaciones)
             correct_feedback = AIFeedback.objects.filter(feedback='CORRECT').count()
             incorrect_feedback = AIFeedback.objects.filter(feedback='INCORRECT').count()
             
             # --- SALUD DEL SISTEMA ---
-            # Huérfanos: Clusters con singletons
+            # HuÃ©rfanos: Clusters con singletons
             pending_orphans = UniqueProductCluster.objects.filter(total_competitors=1).count()
             total_products = Product.objects.count()
 
@@ -320,7 +320,7 @@ class ClusterLabStatsView(APIView):
 class ClusterAuditView(APIView):
     """
     API para el 'Cluster Lab'.
-    1. GET: Retorna los últimos logs de decisión del Clusterizer (Persistent DB).
+    1. GET: Retorna los Ãºltimos logs de decisiÃ³n del Clusterizer (Persistent DB).
     2. POST: (Opcional) Simula un match entre dos productos (Dry Run).
     """
     def get(self, request):
@@ -362,11 +362,11 @@ class ClusterAuditView(APIView):
 
 class ClusterOrphansView(APIView):
     """
-    Retorna productos que están en clusters 'SINGLETON' (solitarios)
-    para auditar por qué no se unieron.
+    Retorna productos que estÃ¡n en clusters 'SINGLETON' (solitarios)
+    para auditar por quÃ© no se unieron.
     """
     def get(self, request):
-        # Buscar clusters con tamaño 1 (o marcados como SINGLETON si tuvieramos ese flag)
+        # Buscar clusters con tamaÃ±o 1 (o marcados como SINGLETON si tuvieramos ese flag)
         # Por eficiencia, buscamos en la tabla de metricas
         orphans = UniqueProductCluster.objects.filter(total_competitors=1).order_by('-updated_at')[:20]
         
@@ -387,7 +387,7 @@ class ClusterOrphansView(APIView):
 
     def post(self, request):
         """
-        Simula la búsqueda de candidatos para un producto huérfano.
+        Simula la bÃºsqueda de candidatos para un producto huÃ©rfano.
         Argumentos: { "product_id": 123 }
         Retorna: Lista de Top 15 (antes 10) Candidatos con scores detallados (Grid V3).
         """
@@ -429,12 +429,12 @@ class ClusterOrphansView(APIView):
                 for row in cur.fetchall():
                     c_pid, c_title, c_price, c_img, dist = row
                     
-                    # Calcular Scores (Misma lógica que Clusterizer V3)
+                    # Calcular Scores (Misma lÃ³gica que Clusterizer V3)
                     visual_score = max(0, 1.0 - float(dist))
                     text_score = SequenceMatcher(None, str(target_title).lower(), str(c_title).lower()).ratio()
                     final_score = (0.6 * visual_score) + (0.4 * text_score)
                     
-                    # Lógica de Rescate (Simulada)
+                    # LÃ³gica de Rescate (Simulada)
                     method = "REJECTED"
                     if visual_score >= 0.92: method = "VISUAL_MATCH"
                     elif text_score >= 0.95 and visual_score >= 0.65: method = "TEXT_RESCUE"
@@ -465,7 +465,7 @@ class ClusterOrphansView(APIView):
 
 class CategoriesView(APIView):
     def get(self, request):
-        """Listar todas las categorías disponibles"""
+        """Listar todas las categorÃ­as disponibles"""
         cats = Category.objects.all().order_by('name')
         data = [{"id": c.id, "name": c.name} for c in cats]
         return Response(data)
@@ -538,7 +538,7 @@ class SystemLogsView(APIView):
 class ClusterFeedbackView(APIView):
     def post(self, request):
         """
-        Guarda el feedback del usuario sobre una decisión de clustering (RICHER DATA).
+        Guarda el feedback del usuario sobre una decisiÃ³n de clustering (RICHER DATA).
         Body: { product_id, candidate_id, decision, feedback, visual_score, text_score, final_score, method, active_weights }
         """
         try:
@@ -638,7 +638,7 @@ class ClusterOrphanActionView(APIView):
             if not product:
                 return Response({"error": "Product not found"}, status=404)
 
-            print(f"⚡ ORPHAN ACTION: {action} on Target {target_id}")
+            print(f"âš¡ ORPHAN ACTION: {action} on Target {target_id}")
 
             with transaction.atomic():
                 if action == 'TRASH':
@@ -652,10 +652,10 @@ class ClusterOrphanActionView(APIView):
                     msg = "Product incinerated (Embeddings & Cluster info removed)"
 
                 elif action == 'CONFIRM_SINGLETON':
-                    # Confirmar que es único. 
+                    # Confirmar que es Ãºnico. 
                     # Simplemente nos aseguramos que tenga un cluster propio y valido.
                     # El hecho de que el usuario lo revise ya valida su existencia.
-                    # Podríamos agregar un flag 'verified_by_human' en el futuro.
+                    # PodrÃ­amos agregar un flag 'verified_by_human' en el futuro.
                     msg = "Singleton confirmed"
 
                 elif action == 'MERGE_SELECTED':
@@ -671,7 +671,7 @@ class ClusterOrphanActionView(APIView):
 
                     # 2. Mover candidatos a este cluster
                     for cand_id in candidates:
-                        # Borrar membresía anterior
+                        # Borrar membresÃ­a anterior
                         ProductClusterMembership.objects.filter(product_id=cand_id).delete()
                         # Crear nueva en el cluster del target
                         ProductClusterMembership.objects.create(
