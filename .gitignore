@@ -38,18 +38,19 @@ db.sqlite3
 db.sqlite3-journal
 # Media content (user uploads)
 media/
-# Static collection (unless commited for deployment without build step)
+# Static collection
 staticfiles/
 
 # --- Variables de Entorno (CRÍTICO) ---
-# Ignore all .env files
+# Ignore all .env files and local overrides
 .env
 .env.*
+*.local
 # Exception: Examples or templates for dev setup
 !.env.example
 !.env.template
 !.env.*.example
-
+!.env.docker.example
 
 # --- Datos Crudos y Procesados ---
 # Evitar subir datasets grandes o scraping temporal
@@ -65,8 +66,12 @@ backups/*.sql
 # --- Logs ---
 logs/
 !logs/.gitkeep
-# Ignore root logs if any appear
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
 # --- Caché de Modelos IA ---
 cache_huggingface/
@@ -78,21 +83,25 @@ cache_huggingface/
 
 # --- IDEs y Editores ---
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
+*.sw?
 *~
 .DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # --- Node.js (Frontend) ---
 frontend/node_modules/
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
 frontend/dist/
 frontend/build/
+dist/
+dist-ssr/
 
 # --- Archivos Temporales ---
 *.tmp
