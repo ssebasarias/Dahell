@@ -77,7 +77,11 @@ class Command(BaseCommand):
     def process_file(self, filepath, session):
         logger.info(f"📂 Procesando: {filepath.name}")
         
-        stats = {"ok": 0, "error": 0, "total": 0}
+        stats = {"total": 0, "inserted": 0, "updated": 0, "error": 0}
+        error_types = {}  # Contador de tipos de error
+        error_samples = []  # Primeros 10 errores para debugging
+        success_samples = []  # Primeros 5 registros exitosos
+        failed_data_samples = []  # Primeros 5 registros fallidos con sus datos
         
         # Estrategia de lectura robusta
         encoding_strategy = 'utf-8'
@@ -95,22 +99,83 @@ class Command(BaseCommand):
                     
                     try:
                         record = json.loads(line)
-                        self.ingest_record(record, session)
-                        stats["ok"] += 1
+                        was_insert = self.ingest_record(record, session)
+                        session.commit()  # CRÍTICO: Commit inmediato por registro
                         
-                        # Commit por lotes
-                        if stats["ok"] % 100 == 0: 
-                            session.commit()
+                        # Contar si fue INSERT o UPDATE
+                        if was_insert:
+                            stats["inserted"] += 1
+                        else:
+                            stats["updated"] += 1
+                        
+                        # Guardar muestra de registros exitosos
+                        if len(success_samples) < 5:
+                            success_samples.append({
+                                "id": record.get("id"),
+                                "name": record.get("name", "")[:50],
+                                "price": record.get("sale_price"),
+                                "has_image": bool(record.get("image_url") or (record.get("gallery") and len(record.get("gallery", [])) > 0)),
+                                "supplier_id": record.get("supplier", {}).get("id") if isinstance(record.get("supplier"), dict) else None
+                            })
+                        
+                        # Logging por lotes (solo para mostrar progreso)
+                        if (stats["inserted"] + stats["updated"]) % 100 == 0: 
                             self.print_batch_summary(filepath.name, stats)
                             
                     except Exception as e:
-                        # Si es error de DB, rollback y cuenta como error sin ensuciar log
-                        # La mayoria son Transaction Aborted o Datos Sucios.
+                        # Contar tipo de error
+                        error_type = type(e).__name__
+                        error_types[error_type] = error_types.get(error_type, 0) + 1
+                        
+                        # Guardar primeros 10 errores para análisis
+                        if len(error_samples) < 10:
+                            error_samples.append({
+                                "type": error_type,
+                                "message": str(e)[:200],
+                                "record_id": record.get("id") if isinstance(record, dict) else None
+                            })
+                        
+                        # Guardar datos completos de registros fallidos
+                        if len(failed_data_samples) < 5:
+                            failed_data_samples.append({
+                                "id": record.get("id") if isinstance(record, dict) else None,
+                                "name": record.get("name", "")[:50] if isinstance(record, dict) else None,
+                                "price": record.get("sale_price") if isinstance(record, dict) else None,
+                                "has_image": bool(record.get("image_url") or (record.get("gallery") and len(record.get("gallery", [])) > 0)) if isinstance(record, dict) else False,
+                                "supplier_id": record.get("supplier", {}).get("id") if isinstance(record, dict) and isinstance(record.get("supplier"), dict) else None,
+                                "error": str(e)[:100]
+                            })
+                        
                         stats["error"] += 1
                         session.rollback()
+                        # Ya no necesitamos commit aquí porque cada registro exitoso
+                        # hace su propio commit, iniciando automáticamente una nueva transacción
 
             session.commit()
             self.print_batch_summary(filepath.name, stats, final=True)
+            
+            # Loguear resumen de errores
+            if error_types:
+                logger.warning(f"\n⚠️  RESUMEN DE ERRORES en {filepath.name}:")
+                for err_type, count in sorted(error_types.items(), key=lambda x: x[1], reverse=True):
+                    logger.warning(f"   - {err_type}: {count} ocurrencias")
+                
+                if error_samples:
+                    logger.warning(f"\n🔍 PRIMEROS {len(error_samples)} ERRORES (para debugging):")
+                    for i, err in enumerate(error_samples, 1):
+                        logger.warning(f"   {i}. [{err['type']}] ID={err['record_id']}: {err['message']}")
+                
+                # Loguear comparación de datos
+                if success_samples:
+                    logger.info(f"\n✅ MUESTRA DE REGISTROS EXITOSOS ({len(success_samples)}):")
+                    for i, rec in enumerate(success_samples, 1):
+                        logger.info(f"   {i}. ID={rec['id']}, Name='{rec['name']}', Price={rec['price']}, Image={rec['has_image']}, Supplier={rec['supplier_id']}")
+                
+                if failed_data_samples:
+                    logger.warning(f"\n❌ MUESTRA DE REGISTROS FALLIDOS ({len(failed_data_samples)}):")
+                    for i, rec in enumerate(failed_data_samples, 1):
+                        logger.warning(f"   {i}. ID={rec['id']}, Name='{rec['name']}', Price={rec['price']}, Image={rec['has_image']}, Supplier={rec['supplier_id']}")
+                        logger.warning(f"      Error: {rec['error']}")
 
         except Exception as e:
             logger.error(f"❌ Error fatal en archivo {filepath.name}: {e}")
@@ -120,10 +185,14 @@ class Command(BaseCommand):
         icon = "🏁" if final else "📦"
         status = "COMPLETADO" if final else "EN PROGRESO"
         
+        total_procesados = stats['inserted'] + stats['updated']
+        
         msg = (
             f"\n{icon} Lote {filename} [{status}]\n"
-            f"✅ Insertados/Actualizados: {stats['ok']}\n"
-            f"⚠️  Omitidos (Errores/Sucios): {stats['error']}\n"
+            f"✅ Nuevos insertados: {stats['inserted']}\n"
+            f"🔄 Actualizados (duplicados): {stats['updated']}\n"
+            f"📊 Total procesados: {total_procesados}\n"
+            f"⚠️  Omitidos (Errores): {stats['error']}\n"
             f"----------------------------------------"
         )
         logger.info(msg)
@@ -165,7 +234,17 @@ class Command(BaseCommand):
 
         # --- 3. Producto ---
         prod_id = data.get("id")
+        was_insert = False
+        
         if prod_id:
+            # Verificar si el producto ya existe
+            result = session.execute(text("""
+                SELECT 1 FROM products WHERE product_id = :pid
+            """), {"pid": prod_id})
+            
+            product_exists = result.fetchone() is not None
+            
+            # Insertar o actualizar
             session.execute(text("""
                 INSERT INTO products (
                     product_id, supplier_id, sku, title, description,
@@ -195,6 +274,9 @@ class Command(BaseCommand):
                        or (data.get("gallery") and data.get("gallery")[0].get("urlS3"))
                        or (data.get("gallery") and data.get("gallery")[0].get("url"))
             })
+            
+            # Si no existía antes, fue un INSERT
+            was_insert = not product_exists
 
             # --- 4. Stock ---
             if wh_id:
@@ -205,3 +287,5 @@ class Command(BaseCommand):
                         VALUES (:pid, :wid, :qty)
                     """), {"pid": prod_id, "wid": wh_id, "qty": qty})
                 except: pass
+        
+        return was_insert

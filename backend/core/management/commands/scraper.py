@@ -243,13 +243,36 @@ class Command(BaseCommand):
                         else:
                             consecutive_no_button = 0
                         
+                        # Reinicio preventivo de Chrome cada 1000 productos
+                        if len(seen) % 1000 == 0 and len(seen) > 0:
+                            logger.info(f"🔄 Reiniciando Chrome (mantenimiento preventivo - {len(seen)} productos procesados)...")
+                            break
+                        
                         time.sleep(1)
 
+            except KeyboardInterrupt:
+                logger.info("⏹️ Deteniendo scraper (Ctrl+C)...")
+                break
             except Exception as e:
-                logger.error(f"💥 Error: {e}")
+                error_msg = str(e)
+                logger.error(f"💥 Error: {error_msg}")
+                
+                # Logging especial para errores conocidos
+                if "tab crashed" in error_msg.lower():
+                    logger.error("💥 Chrome crash detectado. Reiniciando navegador...")
+                elif "session deleted" in error_msg.lower():
+                    logger.error("💥 Sesión perdida. Reiniciando navegador...")
+                
+                logger.info("🔄 Reiniciando en 60 segundos...")
                 time.sleep(60)
             finally:
-                if driver: driver.quit()
+                if driver:
+                    try:
+                        driver.quit()
+                        logger.info("✅ Driver cerrado correctamente")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error al cerrar driver: {e}")
+                    driver = None
 
     def process_product(self, p):
         # Lógica de extracción simplificada

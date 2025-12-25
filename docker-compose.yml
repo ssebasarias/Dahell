@@ -51,7 +51,7 @@ services:
       - dahell_net
     # Comando por defecto (opcional, o se corre manual)
     command: python backend/manage.py scraper
-    restart: no
+    restart: on-failure:3 # Auto-reinicio en caso de error
     depends_on:
       - db
 
@@ -70,7 +70,7 @@ services:
       - dahell_net
     command: python backend/manage.py loader
     profiles: [ "workers" ]
-    restart: no
+    restart: on-failure:3 # Auto-reinicio en caso de error
     depends_on:
       - db
 
@@ -97,7 +97,7 @@ services:
       - dahell_net
     command: python backend/manage.py vectorizer
     profiles: [ "workers" ]
-    restart: no
+    restart: on-failure:3 # Auto-reinicio en caso de error
     depends_on:
       - db
 
