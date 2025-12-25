@@ -21,9 +21,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM base AS full_app
 
 # Instalar Chromium y chromedriver para Selenium
+# Y librerías gráficas necesarias para PyTorch/Pillow/OpenCV
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     chromium chromium-driver \
+    libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Variables de entorno para Selenium

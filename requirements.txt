@@ -26,6 +26,8 @@ torchvision
 transformers
 sentence-transformers
 scikit-learn
+sentencepiece>=0.1.99
+protobuf>=3.20.0
 
 # --- Web Framework (Django) ---
 django>=5.0

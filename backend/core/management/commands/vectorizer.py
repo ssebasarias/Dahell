@@ -59,14 +59,32 @@ MODEL_NAME = "google/siglip-so400m-patch14-384" # 384px - Estado del Arte (1152 
 
 class Vectorizer:
     def __init__(self):
-        logger.info(f"🧠 Cargando modelo SigLIP ({MODEL_NAME})...")
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"   Hardware detectado: {self.device.upper()}")
-        
-        # Usamos AutoProcessor para manejar automáticamente el resize a 384x384
-        self.model = SiglipModel.from_pretrained(MODEL_NAME).to(self.device)
-        self.processor = AutoProcessor.from_pretrained(MODEL_NAME)
-        logger.info("✅ Modelo SigLIP cargado y listo para alta resolución.")
+        try:
+            logger.info(f"🧠 Cargando modelo SigLIP ({MODEL_NAME})...")
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info(f"   Hardware detectado: {self.device.upper()}")
+            
+            # Verificar variables de entorno importantes
+            hf_cache = os.getenv('HF_HOME', 'No configurado')
+            logger.info(f"   Cache HuggingFace: {hf_cache}")
+            
+            # Usamos AutoProcessor para manejar automáticamente el resize a 384x384
+            self.model = SiglipModel.from_pretrained(MODEL_NAME).to(self.device)
+            self.processor = AutoProcessor.from_pretrained(MODEL_NAME)
+            logger.info("✅ Modelo SigLIP cargado y listo para alta resolución.")
+            
+        except ImportError as e:
+            logger.error(f"❌ FALLO CRÍTICO: Dependencia faltante")
+            logger.error(f"   Error: {str(e)}")
+            logger.error(f"   Solución: Instalar dependencias faltantes en requirements.txt")
+            raise
+        except Exception as e:
+            logger.error(f"❌ FALLO CRÍTICO al cargar modelo SigLIP")
+            logger.error(f"   Tipo de error: {type(e).__name__}")
+            logger.error(f"   Detalles: {str(e)}")
+            logger.error(f"   Modelo: {MODEL_NAME}")
+            logger.error(f"   Device: {self.device if hasattr(self, 'device') else 'No definido'}")
+            raise
 
     def get_db_connection(self):
         return psycopg2.connect(
@@ -108,6 +126,11 @@ class Vectorizer:
         return image_features.cpu().numpy()
 
     def run(self):
+        logger.info("🚀 Vectorizer daemon iniciado")
+        logger.info(f"   Device: {self.device}")
+        logger.info(f"   Modelo: {MODEL_NAME}")
+        logger.info(f"   Cache HF: {os.getenv('HF_HOME', 'No configurado')}")
+        
         while True:
             conn = None
             try:
@@ -130,7 +153,7 @@ class Vectorizer:
                             AND pe.processed_at < (NOW() - INTERVAL '15 minutes')
                         )
                     )
-                    LIMIT 100;
+                    LIMIT 50;
                 """
                 cur.execute(sql_queue)
                 rows = cur.fetchall()

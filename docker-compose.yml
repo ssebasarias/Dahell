@@ -77,7 +77,7 @@ services:
   vectorizer:
     build:
       context: .
-      target: selenium
+      target: vectorizer
     container_name: dahell_vectorizer
     env_file:
       - .env.docker
